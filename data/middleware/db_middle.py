@@ -1,19 +1,17 @@
 import asyncio
 import logging
-from tkinter import S
 from aiogram import BaseMiddleware
 from fastapi.middleware import Middleware
 from sqlalchemy import create_engine, select, pool
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from typing import Callable, Dict, Any, Awaitable
 from aiogram.types import TelegramObject, CallbackQuery, Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
-from config import loadenvr
-from redis_instance import __redis_room__, __redis_users__
+from config import BD_URL_POSTGRES
+from ..redis_instance import __redis_room__, __redis_users__
 
-logger = logging.getLogger(name=__name__) 
+logger = logging.getLogger(name=__name__)
 
-l = loadenvr
-engine = create_async_engine(url=l('db_url'), echo=False, future=True, poolclass=pool.NullPool)
+engine = create_async_engine(url=BD_URL_POSTGRES, echo=False, future=True, poolclass=pool.NullPool)
 session_engine = async_sessionmaker(engine, expire_on_commit=False,  class_=AsyncSession)
 
 class WareBase(BaseMiddleware):

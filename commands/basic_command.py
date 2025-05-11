@@ -7,9 +7,9 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 from commands import message_bot
-from commands.states.state import Admin_menu, start_register
-from config import loadenvr
+from commands.state import Admin_menu, start_register
 from data.sqlchem import User
+from keyboards.button_names import name_state_bt, yes_no_bt
 from keyboards.reply_button import admin_command, man_woman, name_state, yes_no
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
@@ -82,7 +82,7 @@ async def start_(message: Message, state: FSMContext, db_session: AsyncSession):
         await message.answer(text=text, reply_markup=name_state())
 
 
-@router.message(F.text == 'ввести свой'.lower(), StateFilter(start_register.name))
+@router.message(F.text == name_state_bt.mine, StateFilter(start_register.name))
 async def name_(message: Message, state: FSMContext):
     await state.set_state(start_register.name)
     await message.answer(text="Никнейм:", reply_markup=ReplyKeyboardRemove())
@@ -100,7 +100,7 @@ async def enter_name(message: Message, state: FSMContext):
         await state.set_state(start_register.enter)
     
 
-@router.message(F.text == 'оставить'.lower(), StateFilter(start_register.name))
+@router.message(F.text == name_state_bt.leave, StateFilter(start_register.name))
 async def sucsess(message: Message, state: FSMContext, db_session: AsyncSession):
     username = message.from_user.username
     user_id = message.from_user.id
@@ -154,6 +154,7 @@ async def enter_gender_user(message: Message, state: FSMContext):
     await state.update_data({'gender': gender})
     await state.set_state(start_register.m)
 
+
 @router.message(F.text == 'пропустить'.lower(), StateFilter(start_register.name))
 async def skip(message: Message, state: FSMContext, db_session: AsyncSession):
     await state.update_data({'full_name': anonim})
@@ -173,9 +174,9 @@ async def no_state(message: Message, state: FSMContext):
 @router.message(F.text.in_(save_or_change), StateFilter(start_register.check_name))
 async def save_change(message: Message, state: FSMContext, db_session: AsyncSession):
     text = message.text
-    if text == 'да':
+    if text == yes_no_bt.yes:
         await sucsess(message, state, db_session)
-    elif text == 'изменить пол':
+    elif text == yes_no_bt.change_gender:
         await gender_user(message, state)
-    elif text == 'изменить никнейм':
+    elif text == yes_no_bt.change_nickname:
         await name_(message, state)

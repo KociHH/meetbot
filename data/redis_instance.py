@@ -1,4 +1,7 @@
-from data.redis_core import Custom_redis
+from kos_Htools.redis_core.redisetup import RedisBase
+from redis import Redis
 
-__redis_users__ = Custom_redis(key='active_users', data=list)
-__redis_room__ = Custom_redis(key='rooms', data=dict) 
+redis_data = Redis()
+
+__redis_users__ = RedisBase(key='active_users', data=list, redis=redis_data)
+__redis_room__ = RedisBase(key='rooms', data=dict, redis=redis_data) 

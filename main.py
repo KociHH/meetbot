@@ -6,12 +6,12 @@ from aiogram import Bot, Dispatcher, Router, F
 from fastapi import FastAPI, Request
 from fastapi.concurrency import asynccontextmanager
 import uvicorn
-from config import loadenvr
+from config import BOT_TOKEN, WEB_HOOK_URL, WEB_HOOK_HOST, WEB_HOOK_PORT, CHANNEL_ID
 from aiogram.enums import ParseMode
 from commands import router as main_router
 from data.middleware.db_middle import WareBase, listclonWare, session_engine, checkerChannelWare
 from data.sqlchem import create_tables
-from telethon_core.clients import multi
+from kos_Htools.telethon_core.clients import multi
 from commands.message_bot import result
 from aiogram.types import Message
 
@@ -26,12 +26,11 @@ def get_redis(x: str = None):
     return __redis_users__
 
 # env
-l = loadenvr
 
 # bot
-bot = Bot(token=l('bot_token'), default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
-webhook = l('WEB_HOOK_URL').join('/webhook')
+webhook = WEB_HOOK_URL + '/webhook'
 
     
 @asynccontextmanager
@@ -57,7 +56,7 @@ async def bot_setwebhook(request: Request):
     try:
         redis_users = get_redis()
         dp.message.middleware(listclonWare(redis_users.get_cashed().get('users', []), target_handler='reply_command'))
-        dp.message.middleware(checkerChannelWare(l('channel_id')))
+        dp.message.middleware(checkerChannelWare(CHANNEL_ID))
         dp.update.middleware(WareBase(session_engine))
         data = await request.json()
         update = Update(**data)
@@ -68,20 +67,6 @@ async def bot_setwebhook(request: Request):
         logger.error(f'webhook ошибка: {e}')
         return {'status': 'error'}
 
-
-async def start_with_telethon():
-    global result
-    result = input('start telethon? [yes/no]:').strip().lower()
-    
-    if result == 'yes':
-        logger.info('Происходит запуск с telethon...')
-        await multi.start_clients()
-        
-    if result == 'no':
-        logger.info('Происходит запуск без telethon...')
-        await multi.stop_clients()
-
-    uvicorn.run(app, host=l('WEB_HOOK_HOST'), port=int(l('WEB_HOOK_PORT')))
     
 if __name__ == "__main__":
-    asyncio.run(start_with_telethon())
+    uvicorn.run(app, host=WEB_HOOK_HOST, port=int(WEB_HOOK_PORT))

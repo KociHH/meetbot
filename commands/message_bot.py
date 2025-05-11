@@ -5,14 +5,16 @@ from aiogram.types import Message, ReplyKeyboardRemove
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
-from commands.states.state import Main_menu, Menu_chats, create_room_into_tg, okno
+from commands.state import Main_menu, Menu_chats, create_room_into_tg, okno
 from data.sqlchem import User
+from keyboards.button_names import main_commands_bt, menu_chating_bt
 from keyboards.reply_button import chats, main_commands
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
 from data.redis_instance import __redis_room__, __redis_users__
 from keyboards.lists_command import command_chats, main_command_list
 from utils.db_work import create_private_group, find_func,  set_users_active
+from utils.other import import_functions
 
 text_chats = markdown.text(
     f'Инструкцию не придумал пока в падлу'
@@ -24,17 +26,7 @@ logger = logging.getLogger(__name__)
 router = Router(__name__)
 result = ''
 
-async def main_menu(message: Message, state: FSMContext, db_session: AsyncSession):
-    await state.set_state(Main_menu.main)
-    user_id = message.from_user.id
-    name = await db_session.scalar(select(User.full_name).where(User.user_id == user_id))
-    if name:
-        await menu_chats(f'Добро пожаловать, {name}', message, state)
-    else:
-        await message.answer('Пройдите регистрацию')
-        logger.error('Ошибка пользователь прошел без регистрации') 
-
-@router.message(F.text == '🥷 Система чатов', StateFilter(Menu_chats.limit_alert))
+@router.message(F.text == menu_chating_bt.systems_chats, StateFilter(Menu_chats.limit_alert))
 async def menu_chats(text: str, message: Message, state: FSMContext):
     await message.answer(
         text=f"{text}\n\n {text_chats}",
@@ -67,7 +59,7 @@ async def system_chats(message: Message, state: FSMContext):
 async def reply_command(message: Message, state: FSMContext, db_session: AsyncSession):
     user_id = message.from_user.id
     text = message.text
-    if text == '/find':
+    if text == main_commands_bt.find:
         chat = await create_private_group()
         chat_id = chat.id
         ff = await find_func(message, user_id, chat_id)
@@ -75,7 +67,7 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
             logger.info(f'Ошибка при поиске собеседника: {user_id} или Поиск уже идет')
             return False
 
-    elif text == '/stop':
+    elif text == main_commands_bt.stop:
         if user_id in set_users_active:
             set_users_active.discard(user_id)
             __redis_users__.cashed(key='active_users', data=list(set_users_active), ex=0)
@@ -83,5 +75,5 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
         else:
             await message.answer(text='🚀 Вы еще не в поиске нажмите скорее /find')
         
-    elif text == "⬅️ Вернуться в выбору":
-        await main_menu(message, state, db_session)
+    elif text == main_commands_bt.back:
+        await menu_chats(text, message, state)

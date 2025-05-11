@@ -1,43 +1,34 @@
 import logging
-from typing import Union
-from environs import Env
+from typing import Any
 from dotenv import load_dotenv
 import os
 
 logger = logging.getLogger(__name__)
 
-def loadenvr(x: str, path: str | None = None) -> str:
-    env: Env = Env()
-    env.read_env(path=path)
+load_dotenv()
 
-    bot_username = env('BOT_USERNAME')
-    ADMIN_ID = env('ADMIN_ID')
-    db_url = env('BD_URL_POSTGRES')
-    bot_token = env('BOT_TOKEN')
-    bot_token_client = env('BOT_TOKEN_CLIENT')
-    webhook_url = env('WEB_HOOK_URL')
-    port = env("WEB_HOOK_PORT")
-    host = env('WEB_HOOK_HOST')
-    channel_id = env('CHANNEL_ID')
-    
-    list_env = {
-        'bot_username': bot_username,
-        'ADMIN_ID': ADMIN_ID,
-        'bot_token': bot_token,
-        'webhook_url': webhook_url,
-        'port': port,
-        'host': host,
-        'db_url': db_url,
-        'channel_id': channel_id,
-        'bot_token_client': bot_token_client
-    }
-    if list_env:
-        for keys in list_env.keys():
-            if x == keys:
-                return list_env.get(x)
+def get_env_var(key: str, default: Any = None) -> Any:
+    value = os.getenv(key.upper(), default)
+    if value is None:
+        logger.warning(f"Переменная окружения {key} не найдена!")
+    return value
 
-        raise ValueError('Такого элемента нет в списке!')
-    return ''
+BOT_TOKEN = get_env_var('BOT_TOKEN')
+API_ID = get_env_var('TELEGRAM_API_ID')
+API_HASH = get_env_var('TELEGRAM_API_HASH')
+PHONE_NUMBER = get_env_var('TELEGRAM_PHONE_NUMBER')
+BD_URL_POSTGRES = get_env_var('BD_URL_POSTGRES')
+WEB_HOOK_URL = get_env_var('WEB_HOOK_URL')
+WEB_HOOK_HOST = get_env_var('WEB_HOOK_HOST')
+WEB_HOOK_PORT = get_env_var('WEB_HOOK_PORT')
+CHANNEL_ID = get_env_var('CHANNEL_ID')
+ADMIN_ID = get_env_var('ADMIN_ID')
+BOT_USERNAME = get_env_var('BOT_USERNAME')
+
+def loadenvr(key: str, default: Any = None) -> Any:
+    key = key.upper()
+    return globals().get(key, get_env_var(key, default))
+
 
 
 

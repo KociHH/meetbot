@@ -1,5 +1,5 @@
 import re
-from commands.message_bot import main_menu
+from utils.other import import_functions
 import asyncio
 from aiogram.types import Message
 from typing import Any
@@ -11,37 +11,17 @@ from aiogram.fsm.context import FSMContext
 import random
 from data.redis_instance import __redis_room__, __redis_users__
 from utils.date_time_moscow import date_moscow
-from telethon_core.clients import multi
-from config import loadenvr
-from telethon.tl.functions.channels import EditAdminRequest, ChatAdminRights, AddChatUserRequest
+from config import ADMIN_ID
+from kos_Htools.telethon_core import multi
+from telethon.tl.functions.messages import AddChatUserRequest
+from telethon.tl.functions.channels import EditAdminRequest
+from telethon.tl.types import ChatAdminRights
 from telethon import TelegramClient
+from kos_Htools.sql.sql_alchemy import BaseDAO
 
 logger = logging.getLogger(__name__)
 set_users_active = set()
 list_ids_message = []
-l = loadenvr('ADMIN_ID')
-
-class Update_date:
-    def __init__(self, base, params: dict[str, Any]):
-        self.base = base
-        self.params = params
-    
-    def update(self):
-        for key, items in self.params.items():
-            if hasattr(self.base, key):
-                if getattr(self.base, key) != items:
-                    setattr(self.base, key, items)
-            else:
-                logger.error(f"Не найден атрибут '{key}' в объекте {self.base.__class__.__name__}")
-    
-    async def save_(self, db_session: AsyncSession):
-        try:
-            self.update()
-            db_session.add(self.base)
-            await db_session.commit()
-        except Exception as e:
-            logger.error(f'Ошибка при сохранении в бд: {e}')
-            await db_session.rollback() 
 
 
 async def noneuser(
@@ -50,37 +30,42 @@ async def noneuser(
         user_id: int,
         db_session: AsyncSession,
         user_name: str | None = None
-        ):
-    bd_user = await db_session.execute(select(User).where(User.user_id == user_id))
-    cuser = bd_user.scalar_one_or_none()
-    if user_name is None:
-        user_name = 'Не задано'
+        ) -> bool:
+    try:
+        dao = BaseDAO(User, db_session)
+    
+        if user_name is None:
+            user_name = 'Не задано'
 
-    if user_id == l:
-        admin_status = 'admin'
-    else:
-        admin_status = 'user'
+        if user_id == ADMIN_ID:
+            admin_status = 'admin'
+        else:
+            admin_status = 'user'
 
-    if cuser:
-        update = Update_date(
-            base=cuser,
-            params={
-                'user_id': user_id,
-                'user_name': user_name,
-                'admin_status': admin_status
-            })
-        update.update()
-        await update.save_(db_session=db_session)
-        await main_menu(message=message, state=state, db_session=db_session)
-        return False
-    else:    
-        user = User(
-            user_id=user_id,
-            user_name=user_name,
+        if not await dao.get_one(User.user_id == user_id):
+            await dao.create(
+                data={
+                    'user_id': user_id,
+                    'user_name': user_name,
+                    'admin_status': admin_status            
+                }
             )
-        db_session.add(user)
-        await db_session.commit()
+            return True
+        else:
+            await dao.update(
+                User.user_id == user_id,
+                data={
+                    'user_id': user_id,
+                    'user_name': user_name,                
+                    }  
+                )
+            await import_functions(x='menu_chats', message=message, state=state, db_session=db_session)
+            return False
+        
+    except Exception as e:
+        logger.error(f'Ошибка в noneuser: {e}')
         return True
+
 
 async def time_event_user(event) -> bool:
     try:
@@ -119,6 +104,7 @@ async def time_event_user(event) -> bool:
     except Exception as e:
         logger.error(f"Ошибка при проверке времени входа: {e}")
         return False
+
 
 async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool | None:
     global list_ids_message
@@ -168,9 +154,10 @@ async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool
         logger.error(f"Проблема в функции find_func {e}") 
         return False
 
+
 async def create_private_group() -> Any:
     try:
-        client = await multi.get_client()
+        client = await multi.start_clients()
         if not client or not multi.bot_client:
             logger.error("Не удалось получить клиент или бота Telethon")
             return None
@@ -229,24 +216,20 @@ async def create_private_group() -> Any:
         logger.error(f"Ошибка при создании группы или добавлении бота: {e}")
         return None
 
-async def text_for_aiogram(message: Message, text: str, chat_id: int | None = None):
-    if chat_id:
-        await message.bot.send_message(chat_id=chat_id, text=text)
-    await message.answer(text=text)
-    return 
 
-async def delete_chat_after_timeout(chat_id: int, data_room: dict, client: TelegramClient):
+async def delete_chat_after_timeout(message: Message, chat_id: int, data_room: dict, client: TelegramClient):
     try:
+        await multi.start_clients()
         await asyncio.sleep(300)
         
         if len(data_room['users']) != 2:
-            if multi.bot_client:
-                await multi.bot_client.send_message(
-                    chat_id,
-                    '❌ Собеседник не присоединился за отведенное время, чат будет удален.'
-                )
-            await client.delete_dialog(chat_id)
-            logger.info(f"Чат {chat_id} удален из-за отсутствия второго участника")
+            success = await message.bot.send_message(chat_id=chat_id, text=f'❌ Собеседник не присоединился за отведенное время,\n {chat_id} чат будет удален.')
+            if success:
+                await client.delete_dialog(chat_id)
+                logger.info(f"Чат {chat_id} удален из-за отсутствия второго участника")
+            else:
+                logger.error(f"Ошибка при удалении чата после таймаута: {e}")
+                
     except Exception as e:
         logger.error(f"Ошибка при удалении чата после таймаута: {e}")
     
