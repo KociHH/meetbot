@@ -9,8 +9,8 @@ from data.sqlchem import User
 import logging
 from aiogram.fsm.context import FSMContext
 import random
-from data.redis_instance import __redis_room__, __redis_users__
-from utils.date_time_moscow import date_moscow
+from data.redis_instance import __redis_room__, __redis_users__, redis_data
+from utils.time import dateMSC
 from config import ADMIN_ID
 from kos_Htools.telethon_core import multi
 from telethon.tl.functions.messages import AddChatUserRequest
@@ -18,11 +18,9 @@ from telethon.tl.functions.channels import EditAdminRequest
 from telethon.tl.types import ChatAdminRights
 from telethon import TelegramClient
 from kos_Htools.sql.sql_alchemy import BaseDAO
+from data.utils import CreatingJson
 
 logger = logging.getLogger(__name__)
-set_users_active = set()
-list_ids_message = []
-
 
 async def noneuser(
         message: Message,
@@ -108,18 +106,19 @@ async def time_event_user(event) -> bool:
 
 async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool | None:
     global list_ids_message
-    gett = __redis_users__.get_cashed()
+    data: list = redis_data('active_users')
     try:
         title = 'Anonim chat'
-        if user_id in set_users_active:
+
+        if user_id in data:
             await message.answer(text='⏳ Вы уже в очереди. Пожалуйста, подождите...')
             await asyncio.sleep(1)
             return False
         
-        set_users_active.add(user_id)   
-        __redis_users__.cashed(key='active_users', data=list(set_users_active), ex=0) 
-        if len(gett) > 1:
-            partner_id = random.choice([int(partner) for partner in gett if user_id != partner])
+        data.append(user_id) 
+        __redis_users__.cashed(key='active_users', data=data, ex=0) 
+        if len(data) > 1:
+            partner_id = random.choice([int(partner) for partner in data if user_id != partner])
             
             if partner_id and chat_id:
                 chat = await message.bot.create_chat_invite_link(
@@ -139,10 +138,10 @@ async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool
                         chat_id=partner,
                         text=f"🔗 Собеседник найден! Войдите в чат: {chat.invite_link}"
                     )
-                set_users_active.discard(user_id)
-                set_users_active.discard(partner_id)
-                __redis_users__.cashed(key='active_users', data=list(set_users_active), ex=0) 
-                __redis_room__.generate_json_duo(chat_id=chat_id, key='rooms')
+                data.remove(user_id)
+                data.remove(partner_id)
+                __redis_users__.cashed(key='active_users', data=data, ex=0) 
+                data_rooms = CreatingJson().rooms(chat_id, [user_id, partner_id])
                 return True
                     
             else:

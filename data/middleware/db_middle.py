@@ -34,7 +34,7 @@ class WareBase(BaseMiddleware):
             except Exception as e:
                 await session.rollback()
                 logger.error(f'Ошибка в middleware: {e}, class: {__class__.__name__}')
-            
+
 class listclonWare(BaseMiddleware):
     def __init__(self, users_list: list, target_handler: str, max_iterations: int = 100) -> None:
         super().__init__()

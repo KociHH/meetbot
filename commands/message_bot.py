@@ -11,9 +11,9 @@ from keyboards.button_names import main_commands_bt, menu_chating_bt
 from keyboards.reply_button import chats, main_commands
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
-from data.redis_instance import __redis_room__, __redis_users__
+from data.redis_instance import __redis_room__, __redis_users__, redis_data
 from keyboards.lists_command import command_chats, main_command_list
-from utils.db_work import create_private_group, find_func,  set_users_active
+from utils.db_work import create_private_group, find_func
 from utils.other import import_functions
 
 text_chats = markdown.text(
@@ -68,9 +68,10 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
             return False
 
     elif text == main_commands_bt.stop:
-        if user_id in set_users_active:
-            set_users_active.discard(user_id)
-            __redis_users__.cashed(key='active_users', data=list(set_users_active), ex=0)
+        data: list = redis_data('active_users')
+        if user_id in data and data:
+            data.remove(user_id)
+            __redis_users__.cashed(key='active_users', data=data, ex=0)
             await message.answer(text='🛑 Вы прекратили поиск')
         else:
             await message.answer(text='🚀 Вы еще не в поиске нажмите скорее /find')

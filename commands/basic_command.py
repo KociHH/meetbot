@@ -8,6 +8,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
 from commands import message_bot
 from commands.state import Admin_menu, start_register
+from config import ADMIN_ID
 from data.sqlchem import User
 from keyboards.button_names import name_state_bt, yes_no_bt
 from keyboards.reply_button import admin_command, man_woman, name_state, yes_no
@@ -20,13 +21,12 @@ from utils.db_work import __redis_room__, __redis_users__
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 anonim = 'Anonim'
-l = loadenvr
 
 
 @router.message(Command('admin', prefix='/'))
 async def admin_panel(message: Message, state: FSMContext):
     admin_id = message.from_user.id
-    if l('ADMIN_ID') == admin_id:
+    if admin_id in ADMIN_ID:
         await message.answer(text='Функционал:', reply_markup=admin_command())
         await state.set_state(Admin_menu.main)
 
@@ -155,18 +155,18 @@ async def enter_gender_user(message: Message, state: FSMContext):
     await state.set_state(start_register.m)
 
 
-@router.message(F.text == 'пропустить'.lower(), StateFilter(start_register.name))
+@router.message(F.text == name_state_bt.skip, StateFilter(start_register.name))
 async def skip(message: Message, state: FSMContext, db_session: AsyncSession):
     await state.update_data({'full_name': anonim})
     await sucsess(message, state, db_session)
 
     
-@router.message(F.text == "да".lower(), StateFilter(start_register.check_name))
+@router.message(F.text.lower() == "да", StateFilter(start_register.check_name))
 async def yes_state(message: Message, state: FSMContext, db_session: AsyncSession):
     await sucsess(message, state, db_session)
 
 
-@router.message(F.text == "нет".lower(), StateFilter(start_register.check_name))
+@router.message(F.text.lower() == "нет", StateFilter(start_register.check_name))
 async def no_state(message: Message, state: FSMContext):
     await start_(message, state)
     
