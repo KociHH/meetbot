@@ -8,6 +8,7 @@ from typing import Callable, Dict, Any, Awaitable
 from aiogram.types import TelegramObject, CallbackQuery, Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
 from config import BD_URL_POSTGRES
 from ..redis_instance import __redis_room__, __redis_users__
+from keyboards.callback_datas import Subscriber
 
 logger = logging.getLogger(name=__name__)
 
@@ -128,7 +129,7 @@ class checkerChannelWare(BaseMiddleware):
                             ),
                             InlineKeyboardButton(
                                 text='Проверка подписки на канал 🙏',
-                                callback_data='chacker_button'
+                                callback_data=Subscriber.check_button
                             )
                         ]
                     ]
@@ -145,8 +146,20 @@ class checkerChannelWare(BaseMiddleware):
             logger.error(f'Ошибка при проверке подписки: {e}, class: {__class__.__name__}')
             return await handler(event, data)
 
-        
-            
+
+class CheckActivityChat(BaseMiddleware):
+    def __init__(self, ) -> None:
+        super().__init__()
+
+    async def __call__(
+            self,
+            handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
+            event: TelegramObject,
+            data: Dict[str, Any]) -> Any:
+
+
+        result = handler(event, data)
+        return await result
             
     
     

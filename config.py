@@ -24,6 +24,7 @@ WEB_HOOK_PORT = get_env_var('WEB_HOOK_PORT')
 CHANNEL_ID = get_env_var('CHANNEL_ID')
 ADMIN_ID = get_env_var('ADMIN_ID')
 BOT_USERNAME = get_env_var('BOT_USERNAME')
+BOT_ID = get_env_var('BOT_ID')
 
 def loadenvr(key: str, default: Any = None) -> Any:
     key = key.upper()

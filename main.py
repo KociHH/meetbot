@@ -11,28 +11,21 @@ from aiogram.enums import ParseMode
 from commands import router as main_router
 from data.middleware.db_middle import WareBase, listclonWare, session_engine, checkerChannelWare
 from data.sqlchem import create_tables
+from data.redis_instance import users
 from kos_Htools.telethon_core.clients import multi
 from commands.message_bot import result
 from aiogram.types import Message
+from utils.other import bot, dp
 
 logging.basicConfig(level=logging.INFO)
 
 logger = logging.getLogger(__name__)
 
-def get_redis(x: str = None):
-    from data.redis_instance import __redis_room__, __redis_users__
-    if x == 'room':
-        return __redis_room__
-    return __redis_users__
-
-# env
-
 # bot
-bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-dp = Dispatcher()
-webhook = WEB_HOOK_URL + '/webhook'
-
-    
+webhook = WEB_HOOK_URL
+if '/webhook' not in WEB_HOOK_URL:
+    webhook = WEB_HOOK_URL + '/webhook'
+  
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     webhook_info = await bot.get_webhook_info()
@@ -54,8 +47,7 @@ app = FastAPI(lifespan=lifespan)
 @app.post('/webhook')
 async def bot_setwebhook(request: Request):
     try:
-        redis_users = get_redis()
-        dp.message.middleware(listclonWare(redis_users.get_cashed().get('users', []), target_handler='reply_command'))
+        dp.message.middleware(listclonWare(users.redis_data().get('users', []), target_handler='reply_command'))
         dp.message.middleware(checkerChannelWare(CHANNEL_ID))
         dp.update.middleware(WareBase(session_engine))
         data = await request.json()

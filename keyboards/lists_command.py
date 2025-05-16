@@ -1,11 +1,11 @@
 from aiogram.types import ReplyKeyboardMarkup
 from aiogram.utils.keyboard import ReplyKeyboardBuilder
-from keyboards.button_names import yes_no_bt, main_commands_bt, admin_command_bt, man_woman_bt
+from keyboards.button_names import main_commands_bt, admin_command_bt, chats_bt
 
 
 command_chats = [
-    '1'
-    '2'
+    chats_bt.one,
+    chats_bt.two
 ]
 
 main_command_list = [
@@ -19,13 +19,3 @@ admin_list = [
     admin_command_bt.rooms,
 ]
 
-man_woman_list = [
-    man_woman_bt.man,
-    man_woman_bt.woman
-]
-
-save_or_change = [
-    yes_no_bt.yes,
-    yes_no_bt.change_gender,
-    yes_no_bt.change_nickname,
-]
