@@ -3,7 +3,7 @@ from .redis_instance import __redis_room__, __redis_users__, room, redis_random_
 from utils.time import dateMSC
 
 # {chat_id: {users: {user_id: {status_online: str, activity: bool, connected: datetime}}, created: datetime}}
-# {num_meet: {users: {user_id: {skip_users: [int], tolk_users: [int], ready: bool = False}}}, created: datetime}
+# {num_meet: {users: {user_id: {skip_users: [int], tolk_users: [int], ready: bool = False, message_id: int}}}, created: datetime}
 
 logger = logging.getLogger(__name__)
 

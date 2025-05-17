@@ -23,7 +23,7 @@ from utils.other import remove_invisible, kats_emodjes, count_meetings
 from data.utils import CreatingJson
 from data.sql_instance import userb
 
-
+pseudonym = 'psdn.'
 anonim = 'Anonim'
 logger = logging.getLogger(__name__)
 router = Router(__name__)
@@ -106,7 +106,12 @@ async def send_random_user(message: Message, state: FSMContext):
 
             data, partner_obj = await pb.search_random()
             partner_id = partner_obj.id
-            partner_full_name = partner_obj.full_name
+            partner = await userb.get_one(User.user_id == partner_id)
+            if not partner:
+                logger.error(f'[Ошибка] не найден {partner_id} в базе')
+                return False
+
+            partner_full_name = partner.full_name
             users_party = [user.user_id, partner_id]
             # {num_meet: {users: {user_id: {skip_users: [int], tolk_users: [int], ready: bool}}}, created: datetime}
             save = random_users.redis_cashed(data, None)
@@ -129,14 +134,20 @@ async def send_random_user(message: Message, state: FSMContext):
                 return False
 
             if save and new_data:
-                for user_ids, names in users_party, [user.full_name, partner_full_name]:
+                for user_ids, names in zip(users_party, [user.full_name, partner_full_name]):
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                    await bot.send_message(
+                    message_send = await bot.send_message(
                         text=
-                        f'Начать общение с {markdown.hpre(names)} .?\n',
+                        f'Начать общение с {markdown.hpre(names)} .?\n Если в конце никнейма {markdown.hpre(pseudonym)} - это всевдоним',
                         chat_id=user_ids,
                         reply_markup=go_tolk()
                     )
+                    await bot.edit_message_reply_markup(
+                        chat_id=user_ids,
+                        message_id=message_send.message_id,
+                        reply_markup=go_tolk(message_send.message_id)
+                    )
+
             else:
                 logger.error('[Ошибка] не изменились Redis данные random_users')
                 return False
@@ -173,7 +184,7 @@ async def saved_name_user(message: Message, state: FSMContext):
         await message.answer(f'Я виду что вы опять ввели невидимый никнейм, прошу повторить попытку снова 🔄')
         await state.set_state(random_user.again_name)
 
-    save = await userb.update(User.user_id == user.user_id, {'full_name': text})
+    save = await userb.update(User.user_id == user.user_id, {'full_name': text.join(f" {pseudonym}")})
     if save:
         await state.set_state(random_user.main)
         await message.answer(

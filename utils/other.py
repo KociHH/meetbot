@@ -107,11 +107,17 @@ def changes_to_random_waiting(user_id: int, field: str | int, value):
     data = redis_random_waiting.redis_data()
 
     for room_id, room_info in data.items():
-        users = room_info.get('users', {})
+        users: dict = room_info.get('users', {})
 
         if user_id in users:
             users[user_id][field] = value
             redis_random_waiting.redis_cashed(data=data)
 
-            return room_id, True
-    return None, False
+            return room_id, True, users
+    return None, False, None
+
+def delete_meet(count_meet: int):
+    data = redis_random_waiting.redis_data()
+    data.pop(count_meet) if isinstance(data, dict) else logger.error(f'Не тот тип {type(data)}')
+    redis_random_waiting.redis_cashed(data=data, ex=None)
+    return data
