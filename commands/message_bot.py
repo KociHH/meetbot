@@ -1,6 +1,8 @@
+from email import message
 import logging
+import stat
 from sqlalchemy import select
-from commands.state import Main_menu, Menu_chats, find_groups, Admin_menu, random_user
+from commands.state import Main_menu, Menu_chats, find_groups, Admin_menu, random_user, Back
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
 from data.redis_instance import __redis_room__, __redis_users__, RAccess, users, random_users, room, redis_random, redis_random_waiting
@@ -13,12 +15,13 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from data.sqlchem import User
 from keyboards.button_names import chats_bt, main_commands_bt, search_again_bt
-from keyboards.reply_button import admin_command, chats, main_commands
+from keyboards.reply_button import admin_command, chats, main_commands, back_bt
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.dataclass import BasicUser
 from keyboards.inline_buttons import go_tolk
 from utils.other import remove_invisible, kats_emodjes, count_meetings
 from data.utils import CreatingJson
+from data.sql_instance import userb
 
 
 anonim = 'Anonim'
@@ -84,6 +87,13 @@ async def send_random_user(message: Message, state: FSMContext):
     text = message.text
     message_text = 'Начался поиск🔍'
     try:
+        if not remove_invisible(user.full_name):
+            await state.set_state(random_user.if_null)
+            await message.answer(
+                text=f'Я вижу у тебя невидимый никнейм. Прошу ввести свой псевдоним 📝',
+                reply_markup=back_bt()
+                )
+
         if text == main_commands_bt.find:
             data = random_users.redis_data()
             random_users.redis_cashed(data.append[user.user_id])
@@ -120,12 +130,10 @@ async def send_random_user(message: Message, state: FSMContext):
 
             if save and new_data:
                 for user_ids, names in users_party, [user.full_name, partner_full_name]:
-                    names = remove_invisible(names)
-                    clarification = f'{markdown.hblockquote(f'Если эмоджи котиков значит у этого человека [{markdown.hbold('Невидимый никнейм')}]')}',
                     await bot.delete_message(chat_id=chat_id, message_id=message_id)
                     await bot.send_message(
                         text=
-                        f'Начать общение с {names if names.strip() else {kats_emodjes()}}?\n\n {clarification}',
+                        f'Начать общение с {markdown.hpre(names)} .?\n',
                         chat_id=user_ids,
                         reply_markup=go_tolk()
                     )
@@ -144,9 +152,43 @@ async def send_random_user(message: Message, state: FSMContext):
                     reply_markup=main_commands()
                     )
                 await state.set_state(random_user.search_again)
+        
+        if text == main_commands_bt.back:
+            await state.set_state(Back.main_menu)
+
 
     except Exception as e:
         logger.error(error_logger(False, 'send_random_user', e))
 
 
+@router.message(F.text, StateFilter(random_user.if_null))
+async def saved_name_user(message: Message, state: FSMContext):
+    user = BasicUser.from_message(message)
+    data = await state.get_data()
+    text: str = data.get('name')
+    if not text:
+        text = message.text
 
+    if not remove_invisible(text):
+        await message.answer(f'Я виду что вы опять ввели невидимый никнейм, прошу повторить попытку снова 🔄')
+        await state.set_state(random_user.again_name)
+
+    save = await userb.update(User.user_id == user.user_id, {'full_name': text})
+    if save:
+        await state.set_state(random_user.main)
+        await message.answer(
+            text=f'👌 Успешно сохранено.\n\n Ваш текущий псевдоним: {text}\n Теперь у вас есть доступ к поиску.',
+            reply_markup=main_commands()
+            )
+    else:
+        logger.info(f'[Ошибка] При сохранении псевдонима {text} юзера {user.user_id}, произошла ошибка')
+        await message.answer(error_logger(True))
+
+@router.message(F.text, StateFilter(random_user.again_name))
+async def again_enter_name(message: Message, state: FSMContext):
+    await state.set_data({'name': message.text})
+    await state.set_state(random_user.if_null)
+
+@router.message(F.text == main_commands_bt.back, StateFilter(Back.main_menu))
+async def back_main_menu(message: Message, state: FSMContext):
+    await menu_chats(message, state, edit=True)

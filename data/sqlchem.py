@@ -9,10 +9,8 @@ class User(base):
     
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, unique=True)
-    user_name = Column(String, nullable=True)
     full_name = Column(String, nullable=True)
     admin_status = Column(String, nullable=False, default='user')
-    gender = Column(String, nullable=True)
     
 
 async def create_tables():

@@ -29,8 +29,12 @@ hello_text = markdown.text(
     f'[2] Бот вам присылает {markdown.hpre("@username")} собеседника если вы согласны и ваш собеседник то вы и ваш партнер получаете {markdown.hpre('@username')} друг друга\n' 
 )
 
-async def menu_chats(message: Message, state: FSMContext):
-    await message.answer(
+async def menu_chats(message: Message, state: FSMContext, edit: bool = False):
+    message_obj = message.answer
+    if edit:
+        message_obj = message.edit_text
+
+    await message_obj(
         text=f"{hello_text}",
             reply_markup=chats()
             )

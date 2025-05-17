@@ -15,4 +15,11 @@ class Admin_menu(StatesGroup):
 
 class random_user(StatesGroup):
     main = State()
+
+    if_null = State()
+    again_name = State()
+
     search_again = State()
+
+class Back(StatesGroup):
+    main_menu = State()

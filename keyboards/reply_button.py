@@ -27,3 +27,6 @@ def search_again() -> ReplyKeyboardMarkup:
     builder.button(text=search_again_bt.search)
     builder.adjust(1)
     return builder.as_markup()
+
+def back_bt() -> ReplyKeyboardMarkup:
+    builder.button(text=main_commands_bt.back)
