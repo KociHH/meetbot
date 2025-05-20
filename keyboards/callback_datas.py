@@ -10,3 +10,6 @@ class Talking:
 
 class Subscriber:
     check_button = 'check_button'
+
+class ContinueSearch:
+    continue_search = 'continue_search'

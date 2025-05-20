@@ -102,22 +102,51 @@ def count_meetings() -> int:
             break
     return dynamic_count
 
+class RandomMeet:
+    def __init__(self, user_id) -> None:
+        self.user_id = user_id
 
-def changes_to_random_waiting(user_id: int, field: str | int, value):
-    data = redis_random_waiting.redis_data()
+    def changes_to_random_waiting(self, field: str | int, value):
+        data = redis_random_waiting.redis_data()
 
-    for room_id, room_info in data.items():
-        users: dict = room_info.get('users', {})
+        for room_id, room_info in data.items():
+            users: dict = room_info.get('users', {})
 
-        if user_id in users:
-            users[user_id][field] = value
-            redis_random_waiting.redis_cashed(data=data)
+            if self.user_id in users:
+                users[self.user_id][field] = value
+                redis_random_waiting.redis_cashed(data=data)
 
-            return room_id, True, users
-    return None, False, None
+                return room_id, True, users
+        return None, False, None
 
-def delete_meet(count_meet: int):
-    data = redis_random_waiting.redis_data()
-    data.pop(count_meet) if isinstance(data, dict) else logger.error(f'Не тот тип {type(data)}')
-    redis_random_waiting.redis_cashed(data=data, ex=None)
-    return data
+    def delete_meet(self, count_meet: int):
+        data = redis_random_waiting.redis_data()
+        data.pop(count_meet) if isinstance(data, dict) else logger.error(f'Не тот тип {type(data)}')
+        redis_random_waiting.redis_cashed(data=data, ex=None)
+        return data
+
+    def delete_random_user(self):
+        data = random_users.redis_data()
+        data.pop(str(self.user_id), None)
+        random_users.redis_cashed(data=data, ex=None)
+
+    def changes_to_random_user(self):
+        data = random_users.redis_data()
+        skip_users = data[self.user_id].get('skip_users', [])
+        tolk_users = data[self.user_id].get('tolk_users', [])
+        return skip_users, tolk_users
+
+    def search_random_partner(self):
+        data = random_users.redis_data()
+        if len(data) <= 1:
+            return None
+        
+        available_partners = [p for p in data if p != self.user_id]
+        if not available_partners:
+            return None
+        
+        partner_id = random.choice(available_partners)
+        return {
+            "partner_id": partner_id,
+            "user_id": self.user_id,
+        }

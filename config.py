@@ -25,6 +25,7 @@ CHANNEL_ID = get_env_var('CHANNEL_ID')
 ADMIN_ID = get_env_var('ADMIN_ID')
 BOT_USERNAME = get_env_var('BOT_USERNAME')
 BOT_ID = get_env_var('BOT_ID')
+LOCAL_REDIS = get_env_var('LOCAL_REDIS')
 
 def loadenvr(key: str, default: Any = None) -> Any:
     key = key.upper()

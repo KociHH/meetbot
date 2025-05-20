@@ -1,6 +1,6 @@
 from data.middleware.db_middle import engine
 import asyncio
-from sqlalchemy import BigInteger, Column, String, Integer
+from sqlalchemy import BigInteger, Column, String, Integer, DateTime
 from sqlalchemy.orm import declarative_base
 
 base = declarative_base()
@@ -10,6 +10,8 @@ class User(base):
     id = Column(Integer, primary_key=True)
     user_id = Column(BigInteger, unique=True)
     full_name = Column(String, nullable=True)
+    pseudonym = Column(String, nullable=True)
+    last_activity = Column(DateTime, nullable=False)
     admin_status = Column(String, nullable=False, default='user')
     
 

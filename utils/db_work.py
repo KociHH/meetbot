@@ -1,13 +1,8 @@
 import re
-from utils.other import import_functions, error_logger
+from utils.other import import_functions, error_logger, menu_chats
 import asyncio
 from aiogram.types import Message
 from typing import Any
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession
-from data.sqlchem import User
-import logging
-from aiogram.fsm.context import FSMContext
 import random
 from data.redis_instance import __redis_room__, __redis_users__, redis_random, random_users, room, users
 from utils.time import dateMSC
@@ -17,57 +12,15 @@ from telethon.tl.functions.messages import AddChatUserRequest
 from telethon.tl.functions.channels import EditAdminRequest
 from telethon.tl.types import ChatAdminRights
 from telethon import TelegramClient
-from kos_Htools.sql.sql_alchemy import BaseDAO
-from data.utils import CreatingJson
+import logging
 from config import BOT_ID
 import random
-from utils.other import bot, remove_invisible
+from utils.other import bot
+from data.celery.tasks import  add_user_to_search,  remove_user_from_search, create_private_chat
+
 
 logger = logging.getLogger(__name__)
 title_chat = 'Чатик знакомств'
-
-async def noneuser(
-        message: Message,
-        state: FSMContext,
-        user_id: int,
-        db_session: AsyncSession,
-        user_name: str | None = None
-        ) -> bool:
-    try:
-        dao = BaseDAO(User, db_session)
-    
-        if user_name is None:
-            user_name = 'Не задано'
-
-        if user_id == ADMIN_ID:
-            admin_status = 'admin'
-        else:
-            admin_status = 'user'
-
-        if not await dao.get_one(User.user_id == user_id):
-            await dao.create(
-                data={
-                    'user_id': user_id,
-                    'user_name': user_name,
-                    'admin_status': admin_status            
-                }
-            )
-            return True
-        else:
-            await dao.update(
-                User.user_id == user_id,
-                data={
-                    'user_id': user_id,
-                    'user_name': user_name,                
-                    }  
-                )
-            await import_functions(x='menu_chats', message=message, state=state, db_session=db_session)
-            return False
-        
-    except Exception as e:
-        logger.error(f'Ошибка в noneuser: {e}')
-        return True
-
 
 async def time_event_user(event) -> bool:
     try:
@@ -109,30 +62,28 @@ async def time_event_user(event) -> bool:
 
 
 async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool | None:
-    global list_ids_message
-    data: list = users.redis_data()
     try:
-
-        if user_id in data:
+        if not add_user_to_search.delay(user_id).get():
             await message.answer(text='⏳ Вы уже в очереди. Пожалуйста, подождите...')
             await asyncio.sleep(1)
             return False
+
+        partner_data = None
+        if not partner_data:
+            return False
+
+        partner_id = partner_data["partner_id"]
         
-        data.append(user_id) 
-        __redis_users__.cashed(key='active_users', data=data, ex=0) 
-        if len(data) > 1:
-            partner_id = random.choice([int(partner) for partner in data if user_id != partner])
+        if partner_id and chat_id:
+            chat = await message.bot.create_chat_invite_link(
+                chat_id=chat_id,
+                name=title_chat,
+                member_limit=2,
+            )
             
-            if partner_id and chat_id:
-                chat = await message.bot.create_chat_invite_link(
-                    chat_id=chat_id,
-                    name=title_chat,
-                    member_limit=2,
-                    )
-                
-                message_id = message.message_id
-                chat_message_id = message.chat.id
-                list_ids_message = [message_id, chat_message_id]
+            message_id = message.message_id
+            chat_message_id = message.chat.id
+            list_ids_message = [message_id, chat_message_id]
 
             if chat:
                 for partner in [user_id, partner_id]:
@@ -141,12 +92,13 @@ async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool
                         chat_id=partner,
                         text=f"🔗 Собеседник найден! Войдите в чат:\n {chat.invite_link}"
                     )
-                data.remove(user_id)
-                data.remove(partner_id)
-                __redis_users__.cashed(key='active_users', data=data, ex=0) 
-                data_rooms = CreatingJson().rooms(chat.invite_link, chat_id, [user_id, partner_id])
-                if data_rooms:
-                    logger.info(f'[Created]:\n {data_rooms}')
+                
+                remove_user_from_search.delay(user_id)
+                remove_user_from_search.delay(partner_id)
+                
+                room_data = create_private_chat.delay([user_id, partner_id], chat.invite_link).get()
+                if room_data:
+                    logger.info(f'[Created]:\n {room_data}')
                     return True
                 else:
                     await message.answer(error_logger(True))
@@ -155,7 +107,7 @@ async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool
                     
             else:
                 logger.error(f'Чат не создался с ID: {chat_id}')
-                return
+                return None
         return False
                     
     except Exception as e:

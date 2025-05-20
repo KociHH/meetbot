@@ -19,9 +19,11 @@ from keyboards.reply_button import admin_command, chats, main_commands, back_bt
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.dataclass import BasicUser
 from keyboards.inline_buttons import go_tolk
-from utils.other import remove_invisible, kats_emodjes, count_meetings
+from utils.other import remove_invisible, kats_emodjes, count_meetings, RandomMeet
 from data.utils import CreatingJson
 from data.sql_instance import userb
+from celery import Celery
+from data.celery.tasks import create_private_group, search_random_partner, create_private_chat, remove_user_from_search, add_user_to_search
 
 pseudonym = 'psdn.'
 anonim = 'Anonim'
@@ -69,7 +71,7 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
         data: list = users.redis_data()
         if user_id in data and data:
             data.remove(user_id)
-            __redis_users__.cashed(key='active_users', data=data, ex=0)
+            __redis_users__.cashed(key='active_users', data=data, ex=None)
             await message.answer(text='🛑 Вы прекратили поиск')
         else:
             await message.answer(text='🚀 Вы еще не в поиске нажмите скорее /find')
@@ -95,73 +97,17 @@ async def send_random_user(message: Message, state: FSMContext):
                 )
 
         if text == main_commands_bt.find:
-            data = random_users.redis_data()
-            random_users.redis_cashed(data.append[user.user_id])
-
-            pb = ProgressBar(redis_random, message_id, chat_id, message_text, user.user_id)
-            message_obj = await message.answer(message_text)
-            chat_id = message_obj.chat.id
-            message_id = message_obj.message_id
+            add_user_to_search.delay(user.user_id, 'random_meet')
             
-
-            data, partner_obj = await pb.search_random()
-            partner_id = partner_obj.id
-            partner = await userb.get_one(User.user_id == partner_id)
-            if not partner:
-                logger.error(f'[Ошибка] не найден {partner_id} в базе')
-                return False
-
-            partner_full_name = partner.full_name
-            users_party = [user.user_id, partner_id]
-            # {num_meet: {users: {user_id: {skip_users: [int], tolk_users: [int], ready: bool}}}, created: datetime}
-            save = random_users.redis_cashed(data, None)
+            await message.answer(message_text, reply_markup=ReplyKeyboardRemove())
             
-            waiting_data = redis_random_waiting.redis_data()
-
-            users_data = {}
-            for us in users_party:
-                new_data = waiting_data.get('users', {}).get(us, {})
-                if new_data:
-                    users_data[us] = {
-                        'skip_users': new_data.get('skip_users', 1),
-                        'tolk_users': new_data.get('tolk_users', 1)
-                    }
-
-            if len(users_data) == 2:
-                new_data = CreatingJson.random_waiting({'users': users_data}, count_meetings())
-            else:
-                logger.error(f'[Ошибка] Недостаточно данных для обоих пользователей: {users_data}')
-                return False
-
-            if save and new_data:
-                for user_ids, names in zip(users_party, [user.full_name, partner_full_name]):
-                    await bot.delete_message(chat_id=chat_id, message_id=message_id)
-                    message_send = await bot.send_message(
-                        text=
-                        f'Начать общение с {markdown.hpre(names)} .?\n Если в конце никнейма {markdown.hpre(pseudonym)} - это всевдоним',
-                        chat_id=user_ids,
-                        reply_markup=go_tolk()
-                    )
-                    await bot.edit_message_reply_markup(
-                        chat_id=user_ids,
-                        message_id=message_send.message_id,
-                        reply_markup=go_tolk(message_send.message_id)
-                    )
-
-            else:
-                logger.error('[Ошибка] не изменились Redis данные random_users')
-                return False
-        
         if text == main_commands_bt.stop:
-            data = random_users.redis_data()
-            if data:
-                data.remove(user.user_id)
-                random_users.redis_cashed(data=data, ex=None)
+            if remove_user_from_search.delay(user.user_id).get():
                 logger.info(f'{user.user_id} вышел из поиска')
                 await message.answer(
                     text='⛔️ Вы вышли из поиска.\n Нажмите /find чтобы возобновить поиск или на кнопки в панели ниже.',
                     reply_markup=main_commands()
-                    )
+                )
                 await state.set_state(random_user.search_again)
         
         if text == main_commands_bt.back:
@@ -184,7 +130,7 @@ async def saved_name_user(message: Message, state: FSMContext):
         await message.answer(f'Я виду что вы опять ввели невидимый никнейм, прошу повторить попытку снова 🔄')
         await state.set_state(random_user.again_name)
 
-    save = await userb.update(User.user_id == user.user_id, {'full_name': text.join(f" {pseudonym}")})
+    save = await userb.update(User.user_id == user.user_id, {'pseudonym': text.join(f" {pseudonym}")})
     if save:
         await state.set_state(random_user.main)
         await message.answer(

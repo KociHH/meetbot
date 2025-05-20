@@ -6,15 +6,17 @@ from aiogram.types import Message, ReplyKeyboardRemove
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from sqlalchemy import select
-from commands import message_bot
-from commands.state import Admin_menu, start_register
+from commands.state import Admin_menu
 from config import ADMIN_ID
 from data.sqlchem import User
-from keyboards.button_names import name_state_bt, yes_no_bt
 from keyboards.reply_button import admin_command
-from keyboards.lists_command import admin_list, man_woman_list, save_or_change
+from keyboards.lists_command import admin_list
+from utils.dataclass import BasicUser
 from utils.db_work import __redis_room__, __redis_users__
-from utils.other import menu_chats
+from utils.other import error_logger, menu_chats
+from kos_Htools.sql.sql_alchemy import BaseDAO
+from sqlalchemy.ext.asyncio import AsyncSession
+from utils.time import dateMSC
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
@@ -43,7 +45,39 @@ async def admin_command_(message: Message, state: FSMContext):
             list_count_room.append(enum)
         await message.answer(f"Комнат: {len(list_count_room)}")  
 
-
 @router.message(Command('start', prefix='/'))
 async def starting(message: Message, state: FSMContext):
-    await menu_chats(message, stae=state)
+    result = None
+    user_obj = BasicUser.from_message(message)
+    daouser = BaseDAO(User, AsyncSession)
+    where_user = User.user_id == user_obj.user_id
+
+    user_id = user_obj.user_id
+    full_name = user_obj.full_name
+
+    admin_status = 'user'
+    if user_id in ADMIN_ID:
+        admin_status = 'admin'
+
+    if daouser.get_one(where_user):
+        result = await daouser.update(
+            where_user,
+            {
+                'admin_status': admin_status,
+                'full_name': full_name,
+                'last_activity': dateMSC
+            }
+        )
+    else:
+        result = await daouser.create(
+            {
+                'user_id': user_id,
+                'full_name': full_name,
+                'admin_status': admin_status,
+                'last_activity': dateMSC
+            }
+        )
+    if not result:
+        logger.warning(f"[Ошибка] проблема при сохранении или обновлении в дб {user_id}")
+        await error_logger(True)
+    await menu_chats(message, state)

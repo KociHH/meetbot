@@ -1,9 +1,10 @@
 import logging
-from .redis_instance import __redis_room__, __redis_users__, room, redis_random_waiting
+from .redis_instance import __redis_room__, __redis_users__, room, redis_random_waiting, random_users
 from utils.time import dateMSC
 
-# {chat_id: {users: {user_id: {status_online: str, activity: bool, connected: datetime}}, created: datetime}}
-# {num_meet: {users: {user_id: {skip_users: [int], tolk_users: [int], ready: bool = False, message_id: int}}}, created: datetime}
+# rooms = {chat_id: {users: {user_id: {status_online: str, activity: bool, connected: datetime}}, created: datetime}}
+# random_waiting = {num_meet: {users: {user_id: {ready: bool = False}}}, created: datetime}
+# random_users = {user_id: {skip_users: [int], tolk_users: [int],"added_time": время_добавления, "message_id": id_сообщения_или_null, data_activity: datetime}}
 
 logger = logging.getLogger(__name__)
 
@@ -37,8 +38,6 @@ class CreatingJson:
                 num_meet: {
                       'users': {
                             user_id: {
-                                'skip_users': users_dict[user_id]['skip_users'],
-                                'go_talk': users_dict[user_id]['tolk_users'],
                                 'ready': False,
                             } for user_id in users_dict
                         },
@@ -47,4 +46,19 @@ class CreatingJson:
                 }
             redis_random_waiting.redis_cashed(data=data, ex=None)
             return data
+    
+    def random_user_inf(users: dict):
+        main_data = random_users.redis_data()
+        for user_id, value in users.items():
+            data = {
+                user_id: {
+                    "skip_users": value["skip_users"],
+                    "tolk_users": value['tolk_users'],
+                    'last_activity': dateMSC
+                }
+            }
+            main_data[user_id] = data
+        result = random_users.redis_cashed(main_data, ex=None)
+        return result
+        
     

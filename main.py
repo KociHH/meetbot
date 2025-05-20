@@ -9,7 +9,7 @@ import uvicorn
 from config import BOT_TOKEN, WEB_HOOK_URL, WEB_HOOK_HOST, WEB_HOOK_PORT, CHANNEL_ID
 from aiogram.enums import ParseMode
 from commands import router as main_router
-from data.middleware.db_middle import WareBase, listclonWare, session_engine, checkerChannelWare
+from data.middleware.db_middle import WareBase, session_engine, checkerChannelWare
 from data.sqlchem import create_tables
 from data.redis_instance import users
 from kos_Htools.telethon_core.clients import multi
@@ -47,7 +47,6 @@ app = FastAPI(lifespan=lifespan)
 @app.post('/webhook')
 async def bot_setwebhook(request: Request):
     try:
-        dp.message.middleware(listclonWare(users.redis_data().get('users', []), target_handler='reply_command'))
         dp.message.middleware(checkerChannelWare(CHANNEL_ID))
         dp.update.middleware(WareBase(session_engine))
         data = await request.json()

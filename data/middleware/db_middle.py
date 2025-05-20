@@ -35,58 +35,6 @@ class WareBase(BaseMiddleware):
             except Exception as e:
                 await session.rollback()
                 logger.error(f'Ошибка в middleware: {e}, class: {__class__.__name__}')
-
-class listclonWare(BaseMiddleware):
-    def __init__(self, users_list: list, target_handler: str, max_iterations: int = 100) -> None:
-        super().__init__()
-        self.users_list = users_list
-        self.target_handler = target_handler
-        self.max_iterations = max_iterations
-        self.iteration_count = 0
-        self.is_activated = False
-
-    async def __call__(
-            self, 
-            handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
-            event: TelegramObject,
-            data: Dict[str, Any]
-            ) -> Any:
-        current_handler = handler.__name__ if hasattr(handler, '__name__') else str(handler)
-        logger.info(f'Текущий хендлер: {current_handler}, Целевой хендлер: {self.target_handler}')
-
-        if current_handler != self.target_handler or not isinstance(event, Message) or event.text != '/find':
-            return await handler(event, data)
-            
-        self.iteration_count += 1
-        logger.info(f'Команда /find: Итерация {self.iteration_count} из {self.max_iterations}')
-        
-        if self.iteration_count >= self.max_iterations and not self.is_activated:
-            self.is_activated = True
-            logger.info(f'Достигнут лимит {self.max_iterations} использований команды /find. Запуск обработки...')
-            
-            try:
-                result_data = []
-                if self.users_list and isinstance(self.users_list, list):
-                    unique_users = set(self.users_list)
-                    result_data = list(unique_users)
-                    logger.info(f'Найдено {len(self.users_list) - len(result_data)} дубликатов')
-                else:
-                    logger.info(f'{self.users_list} пустой')
-                
-                data['result_data'] = result_data
-                gett = __redis_users__.get_cashed()
-                gett = result_data
-
-                __redis_users__.cashed(key='useactive_users', data=gett, ex=0)
-                logger.info(f'Обработка пользователей завершена, данные сохранены {result_data}')
-                
-                self.iteration_count = 0
-                self.is_activated = False
-                
-            except Exception as e:
-                logger.error(f'Ошибка при обработке пользователей: {e}, class: {__class__.__name__}')
-        
-        return await handler(event, data)
     
 class checkerChannelWare(BaseMiddleware):
     def __init__(self, channel: int | str) -> None:

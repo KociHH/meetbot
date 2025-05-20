@@ -11,9 +11,11 @@ redis_random = 'redis_random'
 redis_room = 'redis_room'
 redis_random_waiting = 'redis_random_waiting'
 
+# random
 __redis_random_waiting__ = RedisBase(key=redis_random_waiting, data=dict, redis=redis_base)
-__redis_random__ = RedisBase(key=redis_random, data=list, redis=redis_base)
+__redis_random__ = RedisBase(key=redis_random, data=dict, redis=redis_base)
 
+# rooms party
 __redis_users__ = RedisBase(key=redis_users, data=list, redis=redis_base)
 __redis_room__ = RedisBase(key=redis_room, data=dict, redis=redis_base)
 
@@ -33,6 +35,8 @@ class RAccess:
             self.obj = __redis_users__
         elif self.key == redis_random:
             self.obj = __redis_random__
+        elif self.key == redis_random_waiting:
+            self.obj = __redis_random_waiting__
         else:
             logger.error(f'Такого {self.key} нет в redis ключах')
 
