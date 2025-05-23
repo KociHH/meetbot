@@ -1,6 +1,5 @@
 import random
 import re
-from commands.message_bot import menu_chats
 import logging
 from aiogram.types import Message
 from aiogram.fsm.context import FSMContext
@@ -14,7 +13,7 @@ from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from aiogram.enums import ParseMode
 from .words_or_other import INVISIBLE_CHARS, kats
-from data.redis_instance import redis_random, random_users, redis_random_waiting
+from data.redis_instance import random_users, redis_random
 
 logger = logging.getLogger(__name__)
 
@@ -22,11 +21,11 @@ bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTM
 dp = Dispatcher()
 
 hello_text = markdown.text(
-    f'Привет'
+    f'Привет\n'
     f'Этот бот предназначен для быстрых знакомств\n'
-    f'{markdown.hblockquote("Есть варианты:")}\n\n'
+    f'{markdown.hbold("Есть варианты:")}\n\n'
     f'[1] Бот вам присылает приглашение в чат, вы вступаете в него и собеседник и вы общаетесь от 3x человек\n\n'
-    f'[2] Бот вам присылает {markdown.hpre("@username")} собеседника если вы согласны и ваш собеседник то вы и ваш партнер получаете {markdown.hpre('@username')} друг друга\n' 
+    f'[2] Бот вам присылает {markdown.hcode("@username")} собеседника если вы согласны и ваш собеседник то вы и ваш партнер получаете {markdown.hcode('@username')} друг друга\n' 
 )
 
 async def menu_chats(message: Message, state: FSMContext, edit: bool = False):
@@ -76,7 +75,6 @@ def get_invisible_chars(text: str) -> list[str]:
 def remove_invisible(text: str) -> str:
     return ''.join(ch for ch in text if ch not in INVISIBLE_CHARS)
 
-
 def kats_emodjes() -> str:
     result_kats = ''
     size_kat = random.randint(1, 5)
@@ -86,67 +84,3 @@ def kats_emodjes() -> str:
     
     return result_kats
 
-
-def count_meetings() -> int:
-    data = redis_random_waiting.redis_data()
-    if not data:
-        return 1
-    
-    meetings = sorted(int(meet) for meet in data.keys())
-    dynamic_count = 1
-
-    for meet in meetings:
-        if meet == dynamic_count:
-            dynamic_count += 1
-        else:
-            break
-    return dynamic_count
-
-class RandomMeet:
-    def __init__(self, user_id) -> None:
-        self.user_id = user_id
-
-    def changes_to_random_waiting(self, field: str | int, value):
-        data = redis_random_waiting.redis_data()
-
-        for room_id, room_info in data.items():
-            users: dict = room_info.get('users', {})
-
-            if self.user_id in users:
-                users[self.user_id][field] = value
-                redis_random_waiting.redis_cashed(data=data)
-
-                return room_id, True, users
-        return None, False, None
-
-    def delete_meet(self, count_meet: int):
-        data = redis_random_waiting.redis_data()
-        data.pop(count_meet) if isinstance(data, dict) else logger.error(f'Не тот тип {type(data)}')
-        redis_random_waiting.redis_cashed(data=data, ex=None)
-        return data
-
-    def delete_random_user(self):
-        data = random_users.redis_data()
-        data.pop(str(self.user_id), None)
-        random_users.redis_cashed(data=data, ex=None)
-
-    def changes_to_random_user(self):
-        data = random_users.redis_data()
-        skip_users = data[self.user_id].get('skip_users', [])
-        tolk_users = data[self.user_id].get('tolk_users', [])
-        return skip_users, tolk_users
-
-    def search_random_partner(self):
-        data = random_users.redis_data()
-        if len(data) <= 1:
-            return None
-        
-        available_partners = [p for p in data if p != self.user_id]
-        if not available_partners:
-            return None
-        
-        partner_id = random.choice(available_partners)
-        return {
-            "partner_id": partner_id,
-            "user_id": self.user_id,
-        }

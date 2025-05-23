@@ -5,8 +5,8 @@ from fastapi.middleware import Middleware
 from sqlalchemy import create_engine, select, pool
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from typing import Callable, Dict, Any, Awaitable
-from aiogram.types import TelegramObject, CallbackQuery, Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton
-from config import BD_URL_POSTGRES
+from aiogram.types import TelegramObject, CallbackQuery, Message, ReplyKeyboardRemove, InlineKeyboardMarkup, InlineKeyboardButton, ChatMemberLeft
+from config import BD_URL_POSTGRES, ADMIN_ID
 from ..redis_instance import __redis_room__, __redis_users__
 from keyboards.callback_datas import Subscriber
 
@@ -38,9 +38,9 @@ class WareBase(BaseMiddleware):
     
 class checkerChannelWare(BaseMiddleware):
     def __init__(self, channel: int | str) -> None:
-        self.channel = channel.replace('@', '') if isinstance(channel, str) else channel
         super().__init__()
-
+        self.channel = channel
+        
     async def __call__(
             self,
             handler: Callable[[TelegramObject, Dict[str, Any]], Awaitable[Any]],
@@ -50,15 +50,13 @@ class checkerChannelWare(BaseMiddleware):
         try:
             user_id = event.from_user.id
 
-            if isinstance(self.channel, str):
-                channel_info = await event.bot.get_chat(self.channel)
-                channel_id = channel_info.id
-            else:
-                channel_id = self.channel
-
-            user_status = await event.bot.get_chat_member(channel_id, user_id)
+            if user_id in ADMIN_ID:
+                data['is_subscribed'] = True
+                return await handler(event, data)
             
-            if user_status.status not in ['member', 'administrator', 'creator']:
+            user_status = await event.bot.get_chat_member(self.channel, user_id)
+
+            if isinstance(user_status, ChatMemberLeft):
                 data['is_subscribed'] = False
                 return await handler(event, data)
             else:
@@ -76,7 +74,7 @@ class checkerChannelWare(BaseMiddleware):
                                 url=f'https://t.me/{self.channel}'
                             ),
                             InlineKeyboardButton(
-                                text='Проверка подписки на канал 🙏',
+                                text='Проверка подписки на канал 🚀',
                                 callback_data=Subscriber.check_button
                             )
                         ]

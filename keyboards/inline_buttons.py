@@ -1,6 +1,6 @@
 from aiogram.types import InlineKeyboardMarkup
 from aiogram.utils.keyboard import InlineKeyboardBuilder
-from callback_datas import Talking, ContinueSearch
+from .callback_datas import Talking, ContinueSearch
 
 builder = InlineKeyboardBuilder()
 

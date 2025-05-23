@@ -7,10 +7,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
 from data.redis_instance import __redis_room__, __redis_users__, RAccess, users, random_users, room, redis_random, redis_random_waiting
 from keyboards.lists_command import command_chats, main_command_list
-from utils.db_work import create_private_group, find_func, ProgressBar
-from utils.other import error_logger, import_functions, menu_chats, bot
 from aiogram import F, Bot, Router
-from aiogram.types import Message, ReplyKeyboardRemove
+from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from data.sqlchem import User
@@ -19,20 +17,20 @@ from keyboards.reply_button import admin_command, chats, main_commands, back_bt
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.dataclass import BasicUser
 from keyboards.inline_buttons import go_tolk
-from utils.other import remove_invisible, kats_emodjes, count_meetings, RandomMeet
 from data.utils import CreatingJson
 from data.sql_instance import userb
-from celery import Celery
-from data.celery.tasks import create_private_group, search_random_partner, create_private_chat, remove_user_from_search, add_user_to_search
+from data.celery.tasks import message_text, remove_user_from_search, add_user_to_search
+
+
 
 pseudonym = 'psdn.'
 anonim = 'Anonim'
 logger = logging.getLogger(__name__)
-router = Router(__name__)
+router = Router(name=__name__)
 
 text_instructions = markdown.text(
-    '/find - искать собеседника(ов)\n\n'
-    "/stop - выйти из поиска\n\n"
+    f'{main_commands_bt.find} - искать собеседника(ов) (от вашего выбора)\n\n'
+    f"{main_commands_bt.stop} - выйти из поиска\n\n"
     f'⏭️ {markdown.blockquote("После того как нашелся собеседник, бот вам отправит пригласительную ссылку в чат")}\n',
     )
 
@@ -53,13 +51,14 @@ async def system_chats(message: Message, state: FSMContext):
 
 
 @router.message(
-    F.text.in_(main_command_list) or Command(commands=['find',  'stop'], prefix='/'),
+    F.text.in_(main_command_list),
     StateFilter(find_groups.main)
     )
 async def reply_command(message: Message, state: FSMContext, db_session: AsyncSession):
     user_id = message.from_user.id
     text = message.text
     if text == main_commands_bt.find:
+        from utils.db_work import create_private_group, find_func
         chat = await create_private_group()
         chat_id = chat.id
         ff = await find_func(message, user_id, chat_id)
@@ -77,18 +76,19 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
             await message.answer(text='🚀 Вы еще не в поиске нажмите скорее /find')
         
     elif text == main_commands_bt.back:
+        from utils.other import menu_chats
         await menu_chats(message, state)
 
 
 @router.message(
-    F.text.in_(main_command_list) or Command(commands=['find',  'stop'] or search_again_bt.search, prefix='/'),
+    F.text.in_(main_command_list),
     StateFilter(random_user.main, random_user.search_again)
     )
 async def send_random_user(message: Message, state: FSMContext):
     user = BasicUser.from_message(message)
     text = message.text
-    message_text = 'Начался поиск🔍'
     try:
+        from utils.other import remove_invisible
         if not remove_invisible(user.full_name):
             await state.set_state(random_user.if_null)
             await message.answer(
@@ -97,9 +97,8 @@ async def send_random_user(message: Message, state: FSMContext):
                 )
 
         if text == main_commands_bt.find:
-            add_user_to_search.delay(user.user_id, 'random_meet')
-            
-            await message.answer(message_text, reply_markup=ReplyKeyboardRemove())
+            message_obj = await message.answer(message_text)
+            add_user_to_search.delay(message_obj.message_id, user.user_id, redis_random)
             
         if text == main_commands_bt.stop:
             if remove_user_from_search.delay(user.user_id).get():
@@ -115,6 +114,7 @@ async def send_random_user(message: Message, state: FSMContext):
 
 
     except Exception as e:
+        from utils.other import error_logger
         logger.error(error_logger(False, 'send_random_user', e))
 
 
@@ -126,6 +126,7 @@ async def saved_name_user(message: Message, state: FSMContext):
     if not text:
         text = message.text
 
+    from utils.other import remove_invisible
     if not remove_invisible(text):
         await message.answer(f'Я виду что вы опять ввели невидимый никнейм, прошу повторить попытку снова 🔄')
         await state.set_state(random_user.again_name)
@@ -139,6 +140,7 @@ async def saved_name_user(message: Message, state: FSMContext):
             )
     else:
         logger.info(f'[Ошибка] При сохранении псевдонима {text} юзера {user.user_id}, произошла ошибка')
+        from utils.other import error_logger
         await message.answer(error_logger(True))
 
 @router.message(F.text, StateFilter(random_user.again_name))
@@ -148,4 +150,6 @@ async def again_enter_name(message: Message, state: FSMContext):
 
 @router.message(F.text == main_commands_bt.back, StateFilter(Back.main_menu))
 async def back_main_menu(message: Message, state: FSMContext):
+    from utils.other import menu_chats
     await menu_chats(message, state, edit=True)
+

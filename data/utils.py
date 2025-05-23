@@ -1,4 +1,5 @@
 import logging
+import time
 from .redis_instance import __redis_room__, __redis_users__, room, redis_random_waiting, random_users
 from utils.time import dateMSC
 
@@ -9,7 +10,10 @@ from utils.time import dateMSC
 logger = logging.getLogger(__name__)
 
 class CreatingJson:
-    def rooms(invite_link: str, chat_id: int, users: list = None):
+    def __init__(self) -> None:
+        pass
+
+    def rooms(self, invite_link: str, chat_id: int, users: list = None):
             data = {
                 chat_id: {
                     'users': {
@@ -27,7 +31,7 @@ class CreatingJson:
             room.redis_cashed(data=data, ex=None)
             return data
     
-    def random_waiting(users: dict[int, dict[str, int]], num_meet: int = 1):
+    def random_waiting(self, users: dict[int, dict[str, int]], num_meet: int = 1):
             users_dict = users.get('users', {})
             size_users = len(users_dict)
             if size_users != 2:
@@ -46,19 +50,36 @@ class CreatingJson:
                 }
             redis_random_waiting.redis_cashed(data=data, ex=None)
             return data
-    
-    def random_user_inf(users: dict):
-        main_data = random_users.redis_data()
-        for user_id, value in users.items():
-            data = {
-                user_id: {
-                    "skip_users": value["skip_users"],
-                    "tolk_users": value['tolk_users'],
-                    'last_activity': dateMSC
-                }
-            }
-            main_data[user_id] = data
-        result = random_users.redis_cashed(main_data, ex=None)
-        return result
         
-    
+    def random_data_user(self, users: list, value: dict | None = None, main_data: dict | None = None) -> dict:
+        if not main_data:
+            main_data: dict = random_users.redis_data()
+        value = value if value is not None else {}
+        
+        for user_id in users:
+            user_id_str = str(user_id)
+            
+            user_data = main_data.get(user_id_str, {})
+
+            skip_users = value.get("skip_users", user_data.get("skip_users", []))
+            tolk_users = value.get('tolk_users', user_data.get('tolk_users', []))
+            message_id = value.get('message_id', user_data.get('message_id', None))
+            added_time = value.get('added_time', user_data.get('added_time', time.time() if user_id_str not in main_data else user_data.get('added_time')))
+            last_activity = value.get('last_activity', user_data.get('last_activity', dateMSC)) # Обновляем last_activity всегда при обработке
+            continue_id = value.get('continue_id', user_data.get('continue_id', None))
+
+            main_data[user_id_str] = {
+                # exceptions
+                "skip_users": skip_users,
+                "tolk_users": tolk_users,
+                # messages
+                'message_id': message_id,
+                'continue_id': continue_id,
+                # time
+                'added_time': added_time,
+                'last_activity': last_activity
+            }
+
+        random_users.redis_cashed(main_data, ex=None) # Сохраняем измененные данные
+        return main_data
+        

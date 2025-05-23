@@ -20,11 +20,7 @@ beat_schedule = {
         'schedule': 3600.0
     },
     'update-statistics': {
-        'task': 'tasks.update_statistics',
+        'task': 'data.celery.tasks.update_statistics',
         'schedule': 1800.0
     },
-    'check-user-join-time': {
-        'task': 'tasks.check_user_join_time',
-        'schedule': 300.0
-    }
 }

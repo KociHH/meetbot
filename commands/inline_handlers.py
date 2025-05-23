@@ -2,19 +2,22 @@ import asyncio
 import logging
 from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery
+from data.utils import CreatingJson
 from data.redis_instance import __redis_room__, __redis_users__, random_users
 from keyboards.callback_datas import Subscriber, Talking, ContinueSearch
 from utils.dataclass import BasicUser
-from utils.other import bot, dp, RandomMeet, error_logger
+from utils.other import bot, dp, error_logger
+from utils.other_celery import RandomMeet
 from aiogram.utils import markdown
 from keyboards.reply_button import search_again
 from aiogram.fsm.context import FSMContext
-from state import random_user
+from .state import random_user
 import re
 from utils.time import dateMSC
+from keyboards.callback_datas import ContinueSearch
 
 logger = logging.getLogger(__name__)
-router = Router(__name__)
+router = Router(name=__name__)
 
 @router.callback_query(F.data == Subscriber.check_button)
 async def button_checker_subscriber(callback: CallbackQuery, data: dict):
@@ -53,8 +56,7 @@ async def sucsess_talk(call: CallbackQuery):
         await call.answer("Ваш поиск уже остановлен.", show_alert=True)
         try:
             await call.message.edit_text(
-                text="Ваш поиск был остановлен. Вы не можете узнать информацию о собеседнике.",
-                reply_markup=None
+                text=f"Ваш поиск был {markdown.hcode('остановлен')}. Вы не можете узнать информацию о собеседнике.\n Пока он не подтвердит общение.",
             )
         except Exception as e:
             logger.error(error_logger(False, 'sucsess_talk', e))
@@ -93,7 +95,7 @@ async def sucsess_talk(call: CallbackQuery):
         logger.warning(f'Пользователь {user.user_id} не найден ни в одной комнате')
         return False
 
-@router.callback_query(Talking.search)
+@router.callback_query(F.data == Talking.search)
 async def skip_talk(call: CallbackQuery, state: FSMContext):
     user = BasicUser.from_message(call.message)
     user_id_str = str(user.user_id)
@@ -129,7 +131,7 @@ async def skip_talk(call: CallbackQuery, state: FSMContext):
 
         logger.info(f'Удалена комната встречи: {room_id} для {user.user_id}')
         await call.message.edit_text(
-            text='Вы проигнорировали предложение.\n Нажмите на команду /find или на кнопку ниже, чтобы возобновить поиск',
+            text='🙈 Вы проигнорировали предложение.\n Нажмите на кнопку ниже, чтобы возобновить поиск 🔎',
             reply_markup=search_again()
             )
         await state.set_state(random_user.search_again)
@@ -138,11 +140,24 @@ async def skip_talk(call: CallbackQuery, state: FSMContext):
         logger.error(f'Пользователь {user.user_id} не найден ни в одной комнате\n Комната {room_id} не будет удалена.')
         return False
 
+
 @router.callback_query(F.data == ContinueSearch.continue_search)
-async def continue_search_callback(call: CallbackQuery):
+async def handle_continue_search(call: CallbackQuery):
     user_id = call.from_user.id
-
-    await call.message.delete()
-    await call.answer("Продолжаем поиск 🔄", show_alert=False)
-
+    message = call.message
     
+    if message:
+        try:
+            CreatingJson().random_data_user([user_id], {
+                'continue_id': None, 
+            })
+            logger.info(f'Пользователь {user_id} продолжил поиск по кнопке')
+            await message.delete()
+            await call.answer(text='✅')
+
+        except Exception as e:
+            logger.error(f'[Ошибка] при обработке callback_query продолжения поиска для {user_id}: {e}')
+            await call.answer(text='Произошла ошибка.')
+    else:
+        logger.error(f'[Ошибка] message отсутствует в callback_query для пользователя {user_id}')
+        await call.answer(text='Произошла ошибка.')

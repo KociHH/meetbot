@@ -6,10 +6,11 @@ logger = logging.getLogger(__name__)
 
 redis_base = Redis()
 
-redis_users = 'redis_users'
-redis_random = 'redis_random'
+redis_users = 'searching_party'
 redis_room = 'redis_room'
-redis_random_waiting = 'redis_random_waiting'
+
+redis_random = 'searching_patners'
+redis_random_waiting = 'waiting_random'
 
 # random
 __redis_random_waiting__ = RedisBase(key=redis_random_waiting, data=dict, redis=redis_base)

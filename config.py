@@ -22,7 +22,9 @@ WEB_HOOK_URL = get_env_var('WEB_HOOK_URL')
 WEB_HOOK_HOST = get_env_var('WEB_HOOK_HOST')
 WEB_HOOK_PORT = get_env_var('WEB_HOOK_PORT')
 CHANNEL_ID = get_env_var('CHANNEL_ID')
-ADMIN_ID = get_env_var('ADMIN_ID')
+ADMIN_ID = get_env_var('ADMIN_ID').split(',') 
+ADMIN_ID = [int(i) for i in ADMIN_ID]
+
 BOT_USERNAME = get_env_var('BOT_USERNAME')
 BOT_ID = get_env_var('BOT_ID')
 LOCAL_REDIS = get_env_var('LOCAL_REDIS')

@@ -20,8 +20,6 @@ from utils.time import dateMSC
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)
-anonim = 'Anonim'
-
 
 @router.message(Command('admin', prefix='/'))
 async def admin_panel(message: Message, state: FSMContext):
@@ -46,38 +44,38 @@ async def admin_command_(message: Message, state: FSMContext):
         await message.answer(f"Комнат: {len(list_count_room)}")  
 
 @router.message(Command('start', prefix='/'))
-async def starting(message: Message, state: FSMContext):
-    result = None
-    user_obj = BasicUser.from_message(message)
-    daouser = BaseDAO(User, AsyncSession)
-    where_user = User.user_id == user_obj.user_id
+async def starting(message: Message, state: FSMContext, db_session: AsyncSession):
+    try:
+        user_obj = BasicUser.from_message(message)
+        daouser = BaseDAO(User, db_session)
+        where_user = User.user_id == user_obj.user_id
 
-    user_id = user_obj.user_id
-    full_name = user_obj.full_name
+        user_id = user_obj.user_id
+        full_name = user_obj.full_name
 
-    admin_status = 'user'
-    if user_id in ADMIN_ID:
-        admin_status = 'admin'
+        admin_status = 'user'
+        if user_id in ADMIN_ID:
+            admin_status = 'admin'
 
-    if daouser.get_one(where_user):
-        result = await daouser.update(
-            where_user,
-            {
-                'admin_status': admin_status,
-                'full_name': full_name,
-                'last_activity': dateMSC
-            }
-        )
-    else:
-        result = await daouser.create(
-            {
-                'user_id': user_id,
-                'full_name': full_name,
-                'admin_status': admin_status,
-                'last_activity': dateMSC
-            }
-        )
-    if not result:
-        logger.warning(f"[Ошибка] проблема при сохранении или обновлении в дб {user_id}")
-        await error_logger(True)
+        if await daouser.get_one(where_user):
+            await daouser.update(
+                where_user,
+                {
+                    'admin_status': admin_status,
+                    'full_name': full_name,
+                    'last_activity': dateMSC.replace(tzinfo=None)
+                }
+            )
+        else:
+            await daouser.create(
+                {
+                    'user_id': user_id,
+                    'full_name': full_name,
+                    'admin_status': admin_status,
+                    'last_activity': dateMSC.replace(tzinfo=None)
+                }
+            )
+    except Exception as e:
+        error_logger(True)
+        logger.warning(error_logger(False, 'starting', e))
     await menu_chats(message, state)
