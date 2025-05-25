@@ -13,7 +13,7 @@ from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from aiogram.enums import ParseMode
 from .words_or_other import INVISIBLE_CHARS, kats
-from data.redis_instance import random_users, redis_random
+from data.redis_instance import redis_random
 
 logger = logging.getLogger(__name__)
 
@@ -51,18 +51,6 @@ def error_logger(in_bot: bool, name_func: str = '', e: Exception = None) -> str:
         error_log = f'[Ошибка] в функции {name_func}:\n {e}'
     
     return error_bot, error_log
-
-
-async def import_functions(x: str, message: Message, state: FSMContext = None, db_session: AsyncSession = None):
-    try:
-        if x == 'menu_chats':
-            await menu_chats(message, state, db_session)
-        else:
-            logger.error('Такой функции нет')
-            return
-    except Exception as e:
-        logger.error(f'Ошибка в import_functions: {e}')
-
 
 INVISIBLE_PATTERN = re.compile(f"[{''.join(INVISIBLE_CHARS)}]")
 

@@ -3,7 +3,7 @@ import logging
 from aiogram import F, Router
 from aiogram.types import Message, CallbackQuery
 from data.utils import CreatingJson
-from data.redis_instance import __redis_room__, __redis_users__, random_users
+from data.redis_instance import __redis_room__, __redis_users__, __redis_random__, redis_random, __redis_random_waiting__, redis_random_waiting
 from keyboards.callback_datas import Subscriber, Talking, ContinueSearch
 from utils.dataclass import BasicUser
 from utils.other import bot, dp, error_logger
@@ -13,7 +13,7 @@ from keyboards.reply_button import search_again
 from aiogram.fsm.context import FSMContext
 from .state import random_user
 import re
-from utils.time import dateMSC
+from utils.time import dateMSC, time_for_redis
 from keyboards.callback_datas import ContinueSearch
 
 logger = logging.getLogger(__name__)
@@ -52,7 +52,7 @@ async def button_checker_subscriber(callback: CallbackQuery, data: dict):
 async def sucsess_talk(call: CallbackQuery):
     user = BasicUser.from_message(call.message)
     user_id_str = str(user.user_id)
-    if user_id_str not in random_users.redis_data():
+    if user_id_str not in __redis_random__.get_cached(redis_random):
         await call.answer("Ваш поиск уже остановлен.", show_alert=True)
         try:
             await call.message.edit_text(
@@ -60,39 +60,41 @@ async def sucsess_talk(call: CallbackQuery):
             )
         except Exception as e:
             logger.error(error_logger(False, 'sucsess_talk', e))
+        return
 
     rn = RandomMeet(user.user_id)
     room_id, result, users = rn.changes_to_random_waiting('ready', True)
     
     if result:
-        partner_id = next(us for us in users.keys() if us != user.user_id)
-        data = random_users.redis_data()
+        partner_id = next(int(us) for us in users.keys() if int(us) != user.user_id)
+        data = __redis_random__.get_cached(redis_random)
         user_data = data.get(user_id_str, {})
         tolk_users = user_data.get('tolk_users', [])
-        if partner_id not in tolk_users:
+        if partner_id is not None and partner_id not in tolk_users:
             tolk_users.append(partner_id)
 
         user_data['tolk_users'] = tolk_users
-        user_data['data_activity'] = dateMSC
+        user_data['data_activity'] = time_for_redis
         data[user_id_str] = user_data
-        random_users.redis_cashed(data=data)
+        __redis_random__.cashed(redis_random, data=data)
         user_ids = list(users.keys())
-        if all(users[uid].get('ready') for uid in user_ids):
-            for users_id in user_ids:
+        if len(user_ids) == 2 and all(users[uid].get('ready') for uid in user_ids):
+            for user_id_str_ready in user_ids:
+                user_id_ready = int(user_id_str_ready)
                 await bot.edit_message_text(
-                    text=f"Твой партнер {markdown.hlink('тут', f'tg://user?id={users_id}')}",
-                    chat_id=users_id,
+                    text=f"Твой партнер {markdown.hlink('тут', f'tg://user?id={user_id_ready}')}",
+                    chat_id=user_id_ready,
                     message_id=call.message.message_id
                 )
-                data = rn.delete_meet(room_id)
-                if data:
-                    logger.info(f'Была успешно удалена комната: {room_id}')
-                else:
-                    logger.error(f'[Оишбка] не была удалена комната: {room_id}')
+            data_after_delete = rn.delete_meet(room_id)
+            if data_after_delete is not False:
+                logger.info(f'Была успешно удалена комната: {room_id}')
+            else:
+                logger.error(f'[Оишбка] не была удалена комната: {room_id}')
         logger.info(f'{user.user_id} принял запрос на общение')
         await call.message.edit_text(text=f'{markdown.hbold("Ваш ответ был обработан")}. Ожидаем ответ собеседника ⏸️')
     else:
-        logger.warning(f'Пользователь {user.user_id} не найден ни в одной комнате')
+        logger.warning(f'Пользователь {user.user_id} не найден ни в одной комнате в changes_to_random_waiting')
         return False
 
 @router.callback_query(F.data == Talking.search)
@@ -100,7 +102,7 @@ async def skip_talk(call: CallbackQuery, state: FSMContext):
     user = BasicUser.from_message(call.message)
     user_id_str = str(user.user_id)
 
-    if user_id_str not in random_users.redis_data():
+    if user_id_str not in __redis_random__.get_cached(redis_random):
         await call.answer("Ваш поиск уже остановлен.", show_alert=True)
         try:
             await call.message.edit_text(
@@ -109,27 +111,28 @@ async def skip_talk(call: CallbackQuery, state: FSMContext):
             )
         except Exception as e:
              logger.error(f"Не удалось отредактировать сообщение после остановки поиска (skip_talk): {e}")
-        return 
+        return
 
     rn = RandomMeet(user.user_id)
     room_id, result, users = rn.changes_to_random_waiting('ready', False)
     if result:
-        partner_id = next(us for us in users.keys() if us != user.user_id)
-        data = random_users.redis_data()
+        partner_id = next(int(us) for us in users.keys() if int(us) != user.user_id)
+        data = __redis_random__.get_cached(redis_random)
         user_data = data.get(user_id_str, {})
         skip_users = user_data.get('skip_users', [])
-        if partner_id not in skip_users:
+        if partner_id is not None and partner_id not in skip_users:
             skip_users.append(partner_id)
             
         user_data['skip_users'] = skip_users
-        user_data['data_activity'] = dateMSC
+        user_data['data_activity'] = time_for_redis
         data[user_id_str] = user_data
-        random_users.redis_cashed(data=data)
-        data = rn.delete_meet(room_id)
-        if not data:
+        __redis_random__.cashed(redis_random, data=data)
+        data_after_delete = rn.delete_meet(room_id)
+        if data_after_delete is not False:
+            logger.info(f'Удалена комната встречи: {room_id} для {user.user_id}')
+        else:
             logger.error(f'[Ошибка] не была удалена комната: {room_id}')
 
-        logger.info(f'Удалена комната встречи: {room_id} для {user.user_id}')
         await call.message.edit_text(
             text='🙈 Вы проигнорировали предложение.\n Нажмите на кнопку ниже, чтобы возобновить поиск 🔎',
             reply_markup=search_again()
@@ -137,7 +140,7 @@ async def skip_talk(call: CallbackQuery, state: FSMContext):
         await state.set_state(random_user.search_again)
 
     else:
-        logger.error(f'Пользователь {user.user_id} не найден ни в одной комнате\n Комната {room_id} не будет удалена.')
+        logger.error(f'Пользователь {user.user_id} не найден ни в одной комнате в changes_to_random_waiting\n Комната {room_id} не будет удалена.')
         return False
 
 

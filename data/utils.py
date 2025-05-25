@@ -1,7 +1,7 @@
 import logging
 import time
-from .redis_instance import __redis_room__, __redis_users__, room, redis_random_waiting, random_users
-from utils.time import dateMSC
+from .redis_instance import __redis_room__, __redis_users__, redis_room, redis_random_waiting, redis_random, __redis_random__, __redis_random_waiting__
+from utils.time import dateMSC, time_for_redis
 
 # rooms = {chat_id: {users: {user_id: {status_online: str, activity: bool, connected: datetime}}, created: datetime}}
 # random_waiting = {num_meet: {users: {user_id: {ready: bool = False}}}, created: datetime}
@@ -24,11 +24,11 @@ class CreatingJson:
                             'last_message': None,
                         } for user_id in users
                     },
-                    'created': dateMSC,
+                    'created': time_for_redis,
                     'invite_link': invite_link
                 }
             }
-            room.redis_cashed(data=data, ex=None)
+            __redis_room__.cashed(redis_room, data=data, ex=None)
             return data
     
     def random_waiting(self, users: dict[int, dict[str, int]], num_meet: int = 1):
@@ -45,29 +45,32 @@ class CreatingJson:
                                 'ready': False,
                             } for user_id in users_dict
                         },
-                    'created': dateMSC
+                    'created': time_for_redis
                     }
                 }
-            redis_random_waiting.redis_cashed(data=data, ex=None)
+            __redis_random_waiting__.cached(data=data, ex=None)
             return data
         
     def random_data_user(self, users: list, value: dict | None = None, main_data: dict | None = None) -> dict:
         if not main_data:
-            main_data: dict = random_users.redis_data()
+            main_data: dict = __redis_random__.get_cached(redis_random)
         value = value if value is not None else {}
         
         for user_id in users:
             user_id_str = str(user_id)
             
-            user_data = main_data.get(user_id_str, {})
+            user_data: dict = main_data.get(user_id_str, {})
 
-            skip_users = value.get("skip_users", user_data.get("skip_users", []))
-            tolk_users = value.get('tolk_users', user_data.get('tolk_users', []))
+            skip_users = value.get("skip_users", user_data.get("skip_users", [])) 
+            tolk_users = value.get('tolk_users', user_data.get('tolk_users', [])) 
+
+            last_animation_text = value.get('last_animation_text', user_data.get('last_animation_text', None))
             message_id = value.get('message_id', user_data.get('message_id', None))
-            added_time = value.get('added_time', user_data.get('added_time', time.time() if user_id_str not in main_data else user_data.get('added_time')))
-            last_activity = value.get('last_activity', user_data.get('last_activity', dateMSC)) # Обновляем last_activity всегда при обработке
             continue_id = value.get('continue_id', user_data.get('continue_id', None))
 
+            added_time = value.get('added_time', user_data.get('added_time', time.time()))
+            data_activity = value.get('data_activity', user_data.get('data_activity', time_for_redis))
+            
             main_data[user_id_str] = {
                 # exceptions
                 "skip_users": skip_users,
@@ -75,11 +78,12 @@ class CreatingJson:
                 # messages
                 'message_id': message_id,
                 'continue_id': continue_id,
+                'last_animation_text': last_animation_text,
                 # time
                 'added_time': added_time,
-                'last_activity': last_activity
+                'data_activity': data_activity
             }
-
-        random_users.redis_cashed(main_data, ex=None) # Сохраняем измененные данные
+            print(f'Сохранено: {main_data}')
+        __redis_random__.cached(data=main_data, ex=None)
         return main_data
         

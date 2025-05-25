@@ -9,6 +9,8 @@ from commands import router as main_router
 from data.middleware.db_middle import WareBase, session_engine, checkerChannelWare
 from data.sqlchem import create_tables
 from utils.other import bot, dp
+from data.redis_instance import redis_base, redis_random
+from data.redis_instance import cheking_keys
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -18,6 +20,9 @@ if '/webhook' not in WEB_HOOK_URL:
     webhook = WEB_HOOK_URL + '/webhook'
   
 print(webhook)
+
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     webhook_info = await bot.get_webhook_info()
@@ -25,6 +30,7 @@ async def lifespan(app: FastAPI):
         dp.include_router(main_router)
         await bot.set_webhook(webhook)
         await create_tables()
+        cheking_keys()
         logger.info(
             f'Бот запускается...\n'
             f'INFO: {webhook_info}'
@@ -50,5 +56,18 @@ async def bot_setwebhook(request: Request):
         logger.error(f'webhook ошибка: {e}')
         return {'status': 'error'}
 
+def def_start(token: str | None = None):
+    if token == 'bot':
+        print("Starting polling...")
+        try:
+            asyncio.run(dp.start_polling(bot))
+        except Exception as e:
+            print(f"An error occurred during polling: {e}")
+            import traceback
+            traceback.print_exc()
+        print("Polling finished.")
+    else:
+        uvicorn.run(app, host=WEB_HOOK_HOST, port=int(WEB_HOOK_PORT))
+
 if __name__ == "__main__":
-    uvicorn.run(app, host=WEB_HOOK_HOST, port=int(WEB_HOOK_PORT))
+    def_start()

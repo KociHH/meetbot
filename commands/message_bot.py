@@ -1,11 +1,12 @@
 from email import message
 import logging
 import stat
+from kos_Htools import BaseDAO
 from sqlalchemy import select
 from commands.state import Main_menu, Menu_chats, find_groups, Admin_menu, random_user, Back
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
-from data.redis_instance import __redis_room__, __redis_users__, RAccess, users, random_users, room, redis_random, redis_random_waiting
+from data.redis_instance import __redis_room__, __redis_users__, redis_random, redis_users, __redis_random__
 from keyboards.lists_command import command_chats, main_command_list
 from aiogram import F, Bot, Router
 from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery
@@ -18,10 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from utils.dataclass import BasicUser
 from keyboards.inline_buttons import go_tolk
 from data.utils import CreatingJson
-from data.sql_instance import userb
-from data.celery.tasks import message_text, remove_user_from_search, add_user_to_search
-
-
+from data.celery.tasks import message_text, remove_user_from_search, add_user_to_search, monitor_search_users_party
 
 pseudonym = 'psdn.'
 anonim = 'Anonim'
@@ -40,7 +38,7 @@ async def system_chats(message: Message, state: FSMContext):
     if text == chats_bt.one:
         await message.answer(
             text=
-            f'Сейчас в поиске {users.search_online()}'
+            f'Сейчас в поиске {len(__redis_users__.get_cached(redis_users))}'
             f'Введите с каким кол-во участников хотите начать общение [мин от {markdown.hpre('3')}]'
         )
         await state.set_state(find_groups.enter_users)
@@ -67,10 +65,10 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
             return False
             
     elif text == main_commands_bt.stop:
-        data: list = users.redis_data()
+        data: list = __redis_users__.get_cached(redis_users)
         if user_id in data and data:
             data.remove(user_id)
-            __redis_users__.cashed(key='active_users', data=data, ex=None)
+            __redis_users__.cashed(redis_users, data=data, ex=None)
             await message.answer(text='🛑 Вы прекратили поиск')
         else:
             await message.answer(text='🚀 Вы еще не в поиске нажмите скорее /find')
@@ -84,7 +82,7 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
     F.text.in_(main_command_list),
     StateFilter(random_user.main, random_user.search_again)
     )
-async def send_random_user(message: Message, state: FSMContext):
+async def send_random_user(message: Message, state: FSMContext, db_session: AsyncSession):
     user = BasicUser.from_message(message)
     text = message.text
     try:
@@ -99,6 +97,7 @@ async def send_random_user(message: Message, state: FSMContext):
         if text == main_commands_bt.find:
             message_obj = await message.answer(message_text)
             add_user_to_search.delay(message_obj.message_id, user.user_id, redis_random)
+            monitor_search_users_party.delay()
             
         if text == main_commands_bt.stop:
             if remove_user_from_search.delay(user.user_id).get():
@@ -119,16 +118,17 @@ async def send_random_user(message: Message, state: FSMContext):
 
 
 @router.message(F.text, StateFilter(random_user.if_null))
-async def saved_name_user(message: Message, state: FSMContext):
+async def saved_name_user(message: Message, state: FSMContext, db_session: AsyncSession):
     user = BasicUser.from_message(message)
     data = await state.get_data()
     text: str = data.get('name')
+    userb = BaseDAO(User, db_session)
     if not text:
         text = message.text
 
     from utils.other import remove_invisible
     if not remove_invisible(text):
-        await message.answer(f'Я виду что вы опять ввели невидимый никнейм, прошу повторить попытку снова 🔄')
+        await message.answer(f'Я вижу что вы опять ввели невидимый никнейм, прошу повторить попытку снова 🔄')
         await state.set_state(random_user.again_name)
 
     save = await userb.update(User.user_id == user.user_id, {'pseudonym': text.join(f" {pseudonym}")})

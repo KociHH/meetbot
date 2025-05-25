@@ -64,3 +64,4 @@ class DateMoscow:
         return timed
     
 dateMSC = DateMoscow().conclusion_date(option='time_now')
+time_for_redis = dateMSC.isoformat() if hasattr(dateMSC, 'isoformat') else dateMSC
