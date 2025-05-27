@@ -9,13 +9,14 @@ result_serializer = 'json'
 timezone = 'Europe/Moscow'
 enable_utc = True
 
+# celery -A data.celery.celery_app worker -l info -P solo
+# celery -A data.celery.celery_app beat -l info
+
 worker_prefetch_multiplier = 1
 worker_max_tasks_per_child = 1000
 worker_max_memory_per_child = 150000
 
 path_tasks = 'data.celery.tasks.'
-# celery -A data.celery.celery_app worker -l info -P solo
-# celery -A data.celery.celery_app beat -l info
 beat_schedule = {
     'update-statistics': {
         'task': path_tasks + 'update_statistics',
@@ -27,6 +28,6 @@ beat_schedule = {
     },
     'animate-search': {
         'task': path_tasks + 'animate_search',
-        'schedule': 10.0
+        'schedule': 5.0
     }
 }

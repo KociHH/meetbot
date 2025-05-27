@@ -29,22 +29,28 @@ keys = {
    redis_room: __redis_room__
 }
 
+# rooms = {chat_id: {users: {user_id: {status_online: str, activity: bool, connected: datetime}}, created: datetime}}
+# random_waiting = {num_meet: {users: {user_id: {ready: bool = False}}}, created: datetime}
+# random_users = {user_id: {skip_users: [int], tolk_users: [int],"added_time": время_добавления, "message_id": id_сообщения_или_null, data_activity: datetime}}
+
 def cheking_keys():
     for key, rb in keys.items():
         if not redis_base.exists(key):
-            data = {
-                ADMIN_ID[0]: {
-                "skip_users": [],
-                "tolk_users": [],
+            if key == redis_random or redis_users:
+                data = {
+                    ADMIN_ID[0]: {
+                    "skip_users": [],
+                    "tolk_users": [],
 
-                'message_id': None,
-                'continue_id': None,
-                "last_animation_text": None,
+                    'message_id': None,
+                    'continue_id': None,
+                    "last_animation_text": None,
+                    "message_count": 0,
 
-                'added_time': None,
-                'data_activity': None
+                    'added_time': None,
+                    'data_activity': None
+                    }
                 }
-            }
             rb.cached(data=data, key=key, ex=1200)
             logger.info(f'Создан {key} ключ в redis c датой: {data}')
             logger.info(f'Получненные данные {key}: {type(rb.get_cached())}')

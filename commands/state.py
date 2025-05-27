@@ -12,6 +12,11 @@ class find_groups(StatesGroup):
     
 class Admin_menu(StatesGroup):
     main = State()
+    
+    search_us_panel = State()
+    rooms_panel = State()
+    back = State()
+    
 
 class random_user(StatesGroup):
     main = State()

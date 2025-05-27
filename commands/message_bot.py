@@ -14,12 +14,13 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
 from data.sqlchem import User
 from keyboards.button_names import chats_bt, main_commands_bt, search_again_bt
-from keyboards.reply_button import admin_command, chats, main_commands, back_bt
+from keyboards.reply_button import chats, main_commands, back_bt
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.dataclass import BasicUser
 from keyboards.inline_buttons import go_tolk
 from data.utils import CreatingJson
 from data.celery.tasks import message_text, remove_user_from_search, add_user_to_search, monitor_search_users_party
+from utils.other_celery import bot, RandomMeet
 
 pseudonym = 'psdn.'
 anonim = 'Anonim'
@@ -38,8 +39,8 @@ async def system_chats(message: Message, state: FSMContext):
     if text == chats_bt.one:
         await message.answer(
             text=
-            f'Сейчас в поиске {len(__redis_users__.get_cached(redis_users))}'
-            f'Введите с каким кол-во участников хотите начать общение [мин от {markdown.hpre('3')}]'
+            f'Сейчас в поиске {len(__redis_users__.get_cached())}'
+            f'Введите с каким кол-во участников хотите начать общение [мин от {markdown.hcode('3')}]'
         )
         await state.set_state(find_groups.enter_users)
 
@@ -85,6 +86,8 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
 async def send_random_user(message: Message, state: FSMContext, db_session: AsyncSession):
     user = BasicUser.from_message(message)
     text = message.text
+    rm = RandomMeet(user.user_id)
+    rm.getitem_to_random_user(item='contine_id', change_to=None, _change_provided=True)
     try:
         from utils.other import remove_invisible
         if not remove_invisible(user.full_name):
@@ -95,15 +98,32 @@ async def send_random_user(message: Message, state: FSMContext, db_session: Asyn
                 )
 
         if text == main_commands_bt.find:
-            message_obj = await message.answer(message_text)
-            add_user_to_search.delay(message_obj.message_id, user.user_id, redis_random)
-            monitor_search_users_party.delay()
-            
+            message_count = rm.getitem_to_random_user(item='message_id')
+            if not message_count:
+                message_count = 0
+                
+            if message_count >= 5:
+                await message.answer(
+                    text=
+                    f'‼️ Вы превысили лимит не решенных сообщений. {message_count}/5\n'
+                    f'Дальнейший поиск был {markdown.hcode("остановлен")}, нажмите на (😒 скип) или (✅ общаться)\n'
+                    f'Пожалуйста ответьте на каждое из сообщений, чтобы продолжить {markdown.hcode("поиск")}'
+                )
+            message_obj = await message.answer(message_text) 
+            change = rm.getitem_to_random_user(item='message_id', change_to=message_count + 1)
+            if change:
+                add_user_to_search.delay(message_obj.message_id, user.user_id, redis_random)
+                monitor_search_users_party.delay()
+            else:
+                logger.error('[Ошибка] не произошло изменение message_count на + 1')
+                from utils.other import error_logger
+                await bot.send_message(chat_id=user.user_id, text=error_logger(True))
+
         if text == main_commands_bt.stop:
             if remove_user_from_search.delay(user.user_id).get():
                 logger.info(f'{user.user_id} вышел из поиска')
                 await message.answer(
-                    text='⛔️ Вы вышли из поиска.\n Нажмите /find чтобы возобновить поиск или на кнопки в панели ниже.',
+                    text='⛔️ Вы вышли из поиска.\n 🔄 Чтобы возобновить поиск нажмите на кнопку ниже.',
                     reply_markup=main_commands()
                 )
                 await state.set_state(random_user.search_again)
@@ -139,7 +159,7 @@ async def saved_name_user(message: Message, state: FSMContext, db_session: Async
             reply_markup=main_commands()
             )
     else:
-        logger.info(f'[Ошибка] При сохранении псевдонима {text} юзера {user.user_id}, произошла ошибка')
+        logger.info(f'При сохранении псевдонима {text} юзера {user.user_id}, произошла ошибка')
         from utils.other import error_logger
         await message.answer(error_logger(True))
 

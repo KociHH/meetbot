@@ -9,10 +9,19 @@ from commands import router as main_router
 from data.middleware.db_middle import WareBase, session_engine, checkerChannelWare
 from data.sqlchem import create_tables
 from utils.other import bot, dp
-from data.redis_instance import redis_base, redis_random
 from data.redis_instance import cheking_keys
+from utils.other import ErrorPrefixFilter
 
-logging.basicConfig(level=logging.INFO)
+def setup_logging():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(message)s'
+    )
+    root_logger = logging.getLogger()
+    for handler in root_logger.handlers:
+        handler.addFilter(ErrorPrefixFilter())
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 webhook = WEB_HOOK_URL
@@ -20,8 +29,6 @@ if '/webhook' not in WEB_HOOK_URL:
     webhook = WEB_HOOK_URL + '/webhook'
   
 print(webhook)
-
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

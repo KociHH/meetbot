@@ -3,9 +3,6 @@ import time
 from .redis_instance import __redis_room__, __redis_users__, redis_room, redis_random_waiting, redis_random, __redis_random__, __redis_random_waiting__
 from utils.time import dateMSC, time_for_redis
 
-# rooms = {chat_id: {users: {user_id: {status_online: str, activity: bool, connected: datetime}}, created: datetime}}
-# random_waiting = {num_meet: {users: {user_id: {ready: bool = False}}}, created: datetime}
-# random_users = {user_id: {skip_users: [int], tolk_users: [int],"added_time": время_добавления, "message_id": id_сообщения_или_null, data_activity: datetime}}
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +15,7 @@ class CreatingJson:
                 chat_id: {
                     'users': {
                         user_id: {
-                            'status_online': 'Undefind',
+                            'status_online': None,
                             'activity': None,
                             'connected': None,
                             'last_message': None,
@@ -31,9 +28,9 @@ class CreatingJson:
             __redis_room__.cashed(redis_room, data=data, ex=None)
             return data
     
-    def random_waiting(self, users: dict[int, dict[str, int]], num_meet: int = 1):
-            users_dict = users.get('users', {})
-            size_users = len(users_dict)
+    def random_waiting(self, users: dict[int, dict[str, int]], num_meet: int):
+            users_dict: dict = users.get('users', {})
+            size_users = len(users_dict.keys())
             if size_users != 2:
                 logger.error(f'[Ошибка] юзеров != 2 человека: {size_users}\n Словарь: {users}')
                 return False
@@ -43,7 +40,7 @@ class CreatingJson:
                       'users': {
                             user_id: {
                                 'ready': False,
-                            } for user_id in users_dict
+                            } for user_id in users_dict.keys()
                         },
                     'created': time_for_redis
                     }
@@ -58,27 +55,26 @@ class CreatingJson:
         
         for user_id in users:
             user_id_str = str(user_id)
-            
             user_data: dict = main_data.get(user_id_str, {})
 
-            skip_users = value.get("skip_users", user_data.get("skip_users", [])) 
-            tolk_users = value.get('tolk_users', user_data.get('tolk_users', [])) 
+            exception = value.get('exception', user_data.get('exception', [])) 
 
             last_animation_text = value.get('last_animation_text', user_data.get('last_animation_text', None))
             message_id = value.get('message_id', user_data.get('message_id', None))
             continue_id = value.get('continue_id', user_data.get('continue_id', None))
+            message_count = value.get('message_count', user_data.get('message_count', 0))
 
             added_time = value.get('added_time', user_data.get('added_time', time.time()))
             data_activity = value.get('data_activity', user_data.get('data_activity', time_for_redis))
             
             main_data[user_id_str] = {
                 # exceptions
-                "skip_users": skip_users,
-                "tolk_users": tolk_users,
+                "exception": exception,
                 # messages
                 'message_id': message_id,
                 'continue_id': continue_id,
                 'last_animation_text': last_animation_text,
+                'message_count': int(message_count) + 1,
                 # time
                 'added_time': added_time,
                 'data_activity': data_activity

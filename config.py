@@ -33,6 +33,8 @@ def loadenvr(key: str, default: Any = None) -> Any:
     key = key.upper()
     return globals().get(key, get_env_var(key, default))
 
+print(ADMIN_ID)
+
 
 
 

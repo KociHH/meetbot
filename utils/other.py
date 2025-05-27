@@ -13,7 +13,6 @@ from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
 from aiogram.enums import ParseMode
 from .words_or_other import INVISIBLE_CHARS, kats
-from data.redis_instance import redis_random
 
 logger = logging.getLogger(__name__)
 
@@ -24,8 +23,8 @@ hello_text = markdown.text(
     f'Привет\n'
     f'Этот бот предназначен для быстрых знакомств\n'
     f'{markdown.hbold("Есть варианты:")}\n\n'
-    f'[1] Бот вам присылает приглашение в чат, вы вступаете в него и собеседник и вы общаетесь от 3x человек\n\n'
-    f'[2] Бот вам присылает {markdown.hcode("@username")} собеседника если вы согласны и ваш собеседник то вы и ваш партнер получаете {markdown.hcode('@username')} друг друга\n' 
+    f'{chats_bt.one}:\n Бот вам присылает приглашение в чат, вы вступаете в него и собеседники и вы общаетесь от 3х человек и больше\n\n'
+    f'{chats_bt.two}:\n Бот вам присылает {markdown.hcode("имя")} собеседника если вы согласны и ваш собеседник то вы и ваш партнер получаете {markdown.hcode('@username')} друг друга\n' 
 )
 
 async def menu_chats(message: Message, state: FSMContext, edit: bool = False):
@@ -41,16 +40,15 @@ async def menu_chats(message: Message, state: FSMContext, edit: bool = False):
 
 
 def error_logger(in_bot: bool, name_func: str = '', e: Exception = None) -> str:
-    error_bot = None
     error_log = None
     
     if in_bot:
-        error_bot = '[Ошибка] в системе ❗️\n Прошу обратиться к @KociHH'
+        error_log = 'НЕ ПРЕДВИДЕННАЯ ОШИБКА в системе ❗️\n Прошу обратиться к @KociHH'
     
     if e:
-        error_log = f'[Ошибка] в функции {name_func}:\n {e}'
+        error_log = f'в функции {name_func}:\n {e}'
     
-    return error_bot, error_log
+    return error_log
 
 INVISIBLE_PATTERN = re.compile(f"[{''.join(INVISIBLE_CHARS)}]")
 
@@ -72,3 +70,8 @@ def kats_emodjes() -> str:
     
     return result_kats
 
+class ErrorPrefixFilter(logging.Filter):
+    def filter(self, record):
+        if record.levelno >= logging.ERROR and not record.msg.startswith('[Ошибка]'):
+            record.msg = f"[Ошибка] {record.getMessage()}"
+        return True
