@@ -20,7 +20,7 @@ from utils.dataclass import BasicUser
 from keyboards.inline_buttons import go_tolk
 from data.utils import CreatingJson
 from data.celery.tasks import message_text, remove_user_from_search, add_user_to_search, monitor_search_users_party
-from utils.other_celery import bot, RandomMeet
+from utils.celery_tools import bot, RandomMeet, create_private_group, find_func
 
 pseudonym = 'psdn.'
 anonim = 'Anonim'
@@ -57,7 +57,6 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
     user_id = message.from_user.id
     text = message.text
     if text == main_commands_bt.find:
-        from utils.db_work import create_private_group, find_func
         chat = await create_private_group()
         chat_id = chat.id
         ff = await find_func(message, user_id, chat_id)

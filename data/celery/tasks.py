@@ -7,7 +7,7 @@ from data.sqlchem import User
 from aiogram.utils import markdown
 from keyboards.inline_buttons import go_tolk, continue_search_button
 from data.utils import CreatingJson
-from utils.other_celery import random_search, count_meetings, RandomMeet
+from utils.celery_tools import random_search, count_meetings, RandomMeet, create_private_group
 import asyncio
 import random
 import logging
@@ -244,8 +244,7 @@ async def create_private_chat(users_party: list) -> dict | None:
     """Создание приватного чата"""
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     async with bot.session:
-        from utils.db_work import create_private_group
-        chat = await create_private_group()
+        chat = await create_private_group(users_party)
         if not chat:
             logger.error('Не удалось создать чат через create_private_group')
             return None

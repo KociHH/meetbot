@@ -14,11 +14,12 @@ from keyboards.reply_button import AdminFuctional, back_bt
 from keyboards.button_names import main_commands_bt, admin_command_bt, chats_bt, reply_back_bt
 from keyboards.lists_command import admin_list, admin_panels_info
 from utils.dataclass import BasicUser
-from utils.db_work import __redis_room__, __redis_users__, __redis_random__
 from utils.other import error_logger, menu_chats
 from kos_Htools.sql.sql_alchemy import BaseDAO
 from sqlalchemy.ext.asyncio import AsyncSession
 from utils.time import dateMSC
+from data.redis_instance import __redis_room__, __redis_users__, __redis_random__
+from kos_Htools.telethon_core import multi
 
 logger = logging.getLogger(__name__)
 router = Router(name=__name__)

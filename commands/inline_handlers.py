@@ -7,7 +7,7 @@ from data.redis_instance import __redis_room__, __redis_users__, __redis_random_
 from keyboards.callback_datas import Subscriber, Talking, ContinueSearch
 from utils.dataclass import BasicUser
 from utils.other import bot, dp, error_logger
-from utils.other_celery import RandomMeet
+from utils.celery_tools import RandomMeet
 from aiogram.utils import markdown
 from keyboards.reply_button import search_again
 from aiogram.fsm.context import FSMContext
