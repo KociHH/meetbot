@@ -20,14 +20,22 @@ path_tasks = 'data.celery.tasks.'
 beat_schedule = {
     'update-statistics': {
         'task': path_tasks + 'update_statistics',
-        'schedule': 1800.0
+        'schedule': 1800.0,
     },
     'monitor-search-users-party': {
         'task': path_tasks + 'monitor_search_users_party',
-        'schedule': 10.0
+        'schedule': 5.0,
     },
     'animate-search': {
         'task': path_tasks + 'animate_search',
-        'schedule': 5.0
+        'schedule': 5.0,
+    },
+    'check-inactivity-timeout': {
+        'task': path_tasks + 'check_inactivity_timeout',
+        'schedule': 30.0,
+    },
+    'moving-inactive-users-to-mongo': {
+        'task': path_tasks + 'moving_inactive_users_to_mongo',
+        'schedule': 2100.0, # 35min
     }
 }

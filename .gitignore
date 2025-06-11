@@ -8,3 +8,7 @@ __pycache__/
 *.pyd
 test.py
 celerybeat*
+test_*
+*_test.py
+*.log
+.pytest_cache/

@@ -36,19 +36,35 @@ keys = {
 def cheking_keys():
     for key, rb in keys.items():
         if not redis_base.exists(key):
-            if key == redis_random or redis_users:
+            data = {}
+            if key == redis_random:
                 data = {
-                    ADMIN_ID[0]: {
-                    "skip_users": [],
-                    "tolk_users": [],
+                    12345678: {
+                        "exception": [],
+                        'message_id': None,
+                        'continue_id': None,
+                        "last_animation_text": None,
+                        "online_searching": False,
+                        "message_count": 0,
 
-                    'message_id': None,
-                    'continue_id': None,
-                    "last_animation_text": None,
-                    "message_count": 0,
-
-                    'added_time': None,
-                    'data_activity': None
+                        'added_time': None,
+                        'data_activity': None
+                    }
+                }
+            if key == redis_random_waiting:
+                data = {
+                    1: {
+                        "users": {
+                            54321: {
+                                'ready': False,
+                                'message_id': None,
+                            },
+                            12345: {
+                                'ready': False,
+                                'message_id': None,
+                            }
+                        },
+                        'created': None
                     }
                 }
             rb.cached(data=data, key=key, ex=1200)

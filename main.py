@@ -38,6 +38,10 @@ async def lifespan(app: FastAPI):
         await bot.set_webhook(webhook)
         await create_tables()
         cheking_keys()
+        
+        dp.update.middleware(WareBase(session_engine))
+        dp.message.middleware(checkerChannelWare(CHANNEL_ID))
+        
         logger.info(
             f'Бот запускается...\n'
             f'INFO: {webhook_info}'
@@ -52,8 +56,6 @@ app = FastAPI(lifespan=lifespan)
 @app.post('/webhook')
 async def bot_setwebhook(request: Request):
     try:
-        dp.message.middleware(checkerChannelWare(CHANNEL_ID))
-        dp.update.middleware(WareBase(session_engine))
         data = await request.json()
         update = Update(**data)
         await dp.feed_update(bot, update)

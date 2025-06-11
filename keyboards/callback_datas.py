@@ -1,10 +1,4 @@
 class Talking:
-    @staticmethod
-    def with_msgid(msg_id: int | None = None):
-        if msg_id:
-            return f'communicate:{msg_id}'
-        return 'communicate'
-
     communicate = 'communicate'
     search = 'search'
 
@@ -13,3 +7,4 @@ class Subscriber:
 
 class ContinueSearch:
     continue_search = 'continue_search'
+    continue_search_edit = 'continue_search_edit'

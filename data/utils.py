@@ -28,23 +28,21 @@ class CreatingJson:
             __redis_room__.cashed(redis_room, data=data, ex=None)
             return data
     
-    def random_waiting(self, users: dict[int, dict[str, int]], num_meet: int):
-            users_dict: dict = users.get('users', {})
-            size_users = len(users_dict.keys())
-            if size_users != 2:
-                logger.error(f'[Ошибка] юзеров != 2 человека: {size_users}\n Словарь: {users}')
-                return False
+    def random_waiting(self, users: list, num_meet: int):
+            data: dict = __redis_random_waiting__.get_cached()
+            if len(users) != 2:
+                logger.error(f'[Ошибка] юзеров != 2 человека: {users}')
+                return None
 
-            data = {
-                num_meet: {
+            data[num_meet] = {
                       'users': {
                             user_id: {
                                 'ready': False,
-                            } for user_id in users_dict.keys()
+                                'message_id': None
+                            } for user_id in users
                         },
                     'created': time_for_redis
                     }
-                }
             __redis_random_waiting__.cached(data=data, ex=None)
             return data
         
@@ -62,7 +60,9 @@ class CreatingJson:
             last_animation_text = value.get('last_animation_text', user_data.get('last_animation_text', None))
             message_id = value.get('message_id', user_data.get('message_id', None))
             continue_id = value.get('continue_id', user_data.get('continue_id', None))
+
             message_count = value.get('message_count', user_data.get('message_count', 0))
+            online_searching = value.get('online_searching', user_data.get('online_searching', False))
 
             added_time = value.get('added_time', user_data.get('added_time', time.time()))
             data_activity = value.get('data_activity', user_data.get('data_activity', time_for_redis))
@@ -74,10 +74,11 @@ class CreatingJson:
                 'message_id': message_id,
                 'continue_id': continue_id,
                 'last_animation_text': last_animation_text,
-                'message_count': int(message_count) + 1,
+                'message_count': int(message_count),
                 # time
                 'added_time': added_time,
-                'data_activity': data_activity
+                'data_activity': data_activity,
+                'online_searching': online_searching
             }
             print(f'Сохранено: {main_data}')
         __redis_random__.cached(data=main_data, ex=None)

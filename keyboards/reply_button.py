@@ -18,11 +18,11 @@ def main_commands() -> ReplyKeyboardMarkup:
     builder.adjust(2, 1)
     return builder.as_markup(resize_keyboard=True)
 
-def search_again() -> ReplyKeyboardMarkup:
-    builder = ReplyKeyboardBuilder()
-    builder.button(text=search_again_bt.search)
-    builder.adjust(1)
-    return builder.as_markup()
+# def search_again() -> ReplyKeyboardMarkup:
+#     builder = ReplyKeyboardBuilder()
+#     builder.button(text=search_again_bt.search)
+#     builder.adjust(1)
+#     return builder.as_markup()
 
 def back_bt() -> ReplyKeyboardMarkup:
     builder = ReplyKeyboardBuilder()

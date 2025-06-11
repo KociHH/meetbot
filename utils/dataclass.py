@@ -1,11 +1,11 @@
 from dataclasses import dataclass
 from functools import wraps
 import logging
-from aiogram.types import Message
+from aiogram.types import Message, User
 from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
-logger =logging.getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 @dataclass(eq=False)
 class BasicUser:
@@ -17,15 +17,23 @@ class BasicUser:
     last_name: str | None
 
     @classmethod
-    def from_message(cls, message: Message) -> 'BasicUser':
-        user = message.from_user
+    def from_message(cls, message: Message | None, call_user: User | None = None) -> 'BasicUser':
+        user_obj = None
+        if call_user:
+            user_obj = call_user
+        elif message:
+            user_obj = message.from_user
+        
+        if not user_obj:
+            raise ValueError("No user information provided.")
+        
         return cls(
-            user_id=user.id,
-            username=user.username,
-            full_name=user.full_name,
+            user_id=user_obj.id,
+            username=user_obj.username,
+            full_name=user_obj.full_name,
             
-            first_name=user.first_name,
-            last_name=user.last_name
+            first_name=user_obj.first_name,
+            last_name=user_obj.last_name
         )
     
     def to_dict(self) -> dict:

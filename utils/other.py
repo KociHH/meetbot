@@ -7,7 +7,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
 from keyboards.button_names import chats_bt
 from keyboards.reply_button import chats
-from commands.state import Menu_chats
 from aiogram.client.default import DefaultBotProperties
 from aiogram import Bot, Dispatcher
 from config import BOT_TOKEN
@@ -26,18 +25,6 @@ hello_text = markdown.text(
     f'{chats_bt.one}:\n Бот вам присылает приглашение в чат, вы вступаете в него и собеседники и вы общаетесь от 3х человек и больше\n\n'
     f'{chats_bt.two}:\n Бот вам присылает {markdown.hcode("имя")} собеседника если вы согласны и ваш собеседник то вы и ваш партнер получаете {markdown.hcode('@username')} друг друга\n' 
 )
-
-async def menu_chats(message: Message, state: FSMContext, edit: bool = False):
-    message_obj = message.answer
-    if edit:
-        message_obj = message.edit_text
-
-    await message_obj(
-        text=f"{hello_text}",
-            reply_markup=chats()
-            )
-    await state.set_state(Menu_chats.system_chats)
-
 
 def error_logger(in_bot: bool, name_func: str = '', e: Exception = None) -> str:
     error_log = None
@@ -75,3 +62,15 @@ class ErrorPrefixFilter(logging.Filter):
         if record.levelno >= logging.ERROR and not record.msg.startswith('[Ошибка]'):
             record.msg = f"[Ошибка] {record.getMessage()}"
         return True
+    
+async def _send_message_to_user(bot_thread: Bot, target_user_id: int, message_text: str, reply_markup=None) -> Message | None:
+    try:
+        message_obj = await bot_thread.send_message(
+            chat_id=target_user_id,
+            text=message_text,
+            reply_markup=reply_markup
+            )
+        return message_obj
+    except Exception as e:
+        logger.error(f"Не удалось отправить сообщение пользователю {target_user_id}: {e}")
+        return None

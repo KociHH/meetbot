@@ -1,7 +1,7 @@
 class main_commands_bt:
     find = "🔍 Искать"
     stop = "🚫 Стоп"
-    back = "⬅️ Вернуться к выбору"
+    back = "🔙"
 
 class admin_command_bt:
     users_active = 'Кол-во пользователей в поиске'
@@ -18,4 +18,4 @@ class search_again_bt:
     search = 'Искать снова 🔄'
     
 class reply_back_bt:
-    back = '⬅️ Вернуться на шаг назад'
+    back = '🔙'

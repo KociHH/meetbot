@@ -15,7 +15,7 @@ from aiogram.fsm.context import FSMContext
 from data.sqlchem import User
 from keyboards.button_names import chats_bt, main_commands_bt, search_again_bt
 from keyboards.reply_button import chats, main_commands, back_bt
-from sqlalchemy.ext.asyncio import AsyncSession
+
 from utils.dataclass import BasicUser
 from keyboards.inline_buttons import go_tolk
 from data.utils import CreatingJson
@@ -28,9 +28,9 @@ logger = logging.getLogger(__name__)
 router = Router(name=__name__)
 
 text_instructions = markdown.text(
-    f'{main_commands_bt.find} - искать собеседника(ов) (от вашего выбора)\n\n'
+    f'{main_commands_bt.find} - искать собеседника(ов)\n\n'
     f"{main_commands_bt.stop} - выйти из поиска\n\n"
-    f'⏭️ {markdown.blockquote("После того как нашелся собеседник, бот вам отправит пригласительную ссылку в чат")}\n',
+    f'{markdown.hblockquote("После того как нашелся собеседник, бот вам отправит пригласительную ссылку в чат")}\n',
     )
 
 @router.message(F.text.in_(command_chats), StateFilter(Menu_chats.system_chats))
@@ -62,7 +62,7 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
         ff = await find_func(message, user_id, chat_id)
         if not ff:
             logger.info(f'Ошибка при поиске собеседника: {user_id} или Поиск уже идет')
-            return False
+            return
             
     elif text == main_commands_bt.stop:
         data: list = __redis_users__.get_cached(redis_users)
@@ -74,7 +74,7 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
             await message.answer(text='🚀 Вы еще не в поиске нажмите скорее /find')
         
     elif text == main_commands_bt.back:
-        from utils.other import menu_chats
+        from commands.basic_command import menu_chats
         await menu_chats(message, state)
 
 
@@ -83,6 +83,7 @@ async def reply_command(message: Message, state: FSMContext, db_session: AsyncSe
     StateFilter(random_user.main, random_user.search_again)
     )
 async def send_random_user(message: Message, state: FSMContext, db_session: AsyncSession):
+    limit_message = 5
     user = BasicUser.from_message(message)
     text = message.text
     rm = RandomMeet(user.user_id)
@@ -97,39 +98,47 @@ async def send_random_user(message: Message, state: FSMContext, db_session: Asyn
                 )
 
         if text == main_commands_bt.find:
-            message_count = rm.getitem_to_random_user(item='message_id')
+            message_count = rm.getitem_to_random_user(item='message_count')
+
             if not message_count:
                 message_count = 0
                 
-            if message_count >= 5:
+            if message_count >= limit_message:
                 await message.answer(
                     text=
-                    f'‼️ Вы превысили лимит не решенных сообщений. {message_count}/5\n'
+                    f'‼️ Вы превысили лимит не решенных сообщений. {message_count}/{limit_message}\n'
                     f'Дальнейший поиск был {markdown.hcode("остановлен")}, нажмите на (😒 скип) или (✅ общаться)\n'
-                    f'Пожалуйста ответьте на каждое из сообщений, чтобы продолжить {markdown.hcode("поиск")}'
+                    f'Пожалуйста ответьте на каждое из сообщений, чтобы продолжить {markdown.hcode("поиск")}\n'
                 )
+                rm.getitem_to_random_user(item='online_searching', change_to=False, _change_provided=True)
+                logger.info(f'Пользователь {user.user_id} остановил поиск')
+                return
+            
             message_obj = await message.answer(message_text) 
-            change = rm.getitem_to_random_user(item='message_id', change_to=message_count + 1)
-            if change:
-                add_user_to_search.delay(message_obj.message_id, user.user_id, redis_random)
-                monitor_search_users_party.delay()
-            else:
-                logger.error('[Ошибка] не произошло изменение message_count на + 1')
-                from utils.other import error_logger
-                await bot.send_message(chat_id=user.user_id, text=error_logger(True))
+            add_user_to_search.delay(message_obj.message_id, user.user_id, redis_random)
+            monitor_search_users_party.delay()
 
         if text == main_commands_bt.stop:
-            if remove_user_from_search.delay(user.user_id).get():
-                logger.info(f'{user.user_id} вышел из поиска')
+            rm = RandomMeet(user.user_id)
+            if rm.getitem_to_random_user(item='online_searching'):
+                online_searching = rm.getitem_to_random_user(item='online_searching', change_to=False, _change_provided=True)
+
+                logger.info(f'{user.user_id} вышел из поиска по своему желанию -online_searching: {online_searching}')
                 await message.answer(
-                    text='⛔️ Вы вышли из поиска.\n 🔄 Чтобы возобновить поиск нажмите на кнопку ниже.',
+                    text='❗️ Вы вышли из поиска.\n',
                     reply_markup=main_commands()
                 )
                 await state.set_state(random_user.search_again)
+                return
+            else:
+                await message.answer(
+                    text='❓ Вы на данный момент не в поиске.\n',
+                    reply_markup=main_commands()
+                )
         
         if text == main_commands_bt.back:
-            await state.set_state(Back.main_menu)
-
+            from commands.basic_command import menu_chats
+            await menu_chats(message, state)
 
     except Exception as e:
         from utils.other import error_logger
@@ -166,9 +175,4 @@ async def saved_name_user(message: Message, state: FSMContext, db_session: Async
 async def again_enter_name(message: Message, state: FSMContext):
     await state.set_data({'name': message.text})
     await state.set_state(random_user.if_null)
-
-@router.message(F.text == main_commands_bt.back, StateFilter(Back.main_menu))
-async def back_main_menu(message: Message, state: FSMContext):
-    from utils.other import menu_chats
-    await menu_chats(message, state, edit=True)
 
