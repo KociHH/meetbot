@@ -30,8 +30,8 @@ router = Router(name=__name__)
 text_instructions = markdown.text(
     f'{main_commands_bt.find} - искать собеседника(ов)\n\n'
     f"{main_commands_bt.stop} - выйти из поиска\n\n"
-    f'{markdown.hblockquote("После того как нашелся собеседник, бот вам отправит пригласительную ссылку в чат")}\n',
-    )
+    f"{markdown.hblockquote(' ❓ Поиск запоминает ваших собеседников. Второй раз вы не их встретите!')}"
+)
 
 @router.message(F.text.in_(command_chats), StateFilter(Menu_chats.system_chats))
 async def system_chats(message: Message, state: FSMContext):

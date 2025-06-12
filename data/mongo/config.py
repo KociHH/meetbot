@@ -9,3 +9,6 @@ redis_inactive_users_db = client['redis_users_db']
 party_searchers = redis_inactive_users_db['party_searchers']
 many_searchers = redis_inactive_users_db['many_searchers']
 
+# log
+party_searchers_str = 'party_searchers'
+many_searchers_str = 'many_searchers'

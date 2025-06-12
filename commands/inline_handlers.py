@@ -73,7 +73,7 @@ async def sucsess_talk(call: CallbackQuery, db_session: AsyncSession):
     print(room_id, result, users)
 
     if result:
-        message_count = rm.getitem_to_random_user(item='message_count')
+        message_count = int(rm.getitem_to_random_user(item='message_count'))
         reset = rm.reset_rdata(items=['added_time', 'last_animation_text', 'continue_id'], add={'message_count': message_count - 1})
         if not reset:
             logger.error(f'Данные {user.user_id} не обнулились')
@@ -159,7 +159,7 @@ async def skip_talk(call: CallbackQuery):
         if result:
             partner_id = next(int(us) for us in users.keys() if int(us) != user.user_id)
             partner_msd = RandomMeet(partner_id).getitem_to_random_waiting(field='message_id', return_value=True,)
-            message_count = rm.getitem_to_random_user(item='message_count')
+            message_count = int(rm.getitem_to_random_user(item='message_count'))
             reset = rm.reset_rdata(items=['added_time', 'last_animation_text', 'continue_id'], add={'message_count': message_count - 1})
             if not reset:
                 logger.error(f'Данные {user.user_id} не обнулились')
@@ -175,19 +175,19 @@ async def skip_talk(call: CallbackQuery):
                     text=cancel_text,
                     chat_id=partner_id,
                     message_id=partner_msd,
-                    reply_markup=continue_search_button(ContinueSearch.continue_search_edit)
+                    reply_markup=continue_search_button(ContinueSearch.continue_search)
                 )
             except Exception as e:
                 logger.error(f'Не получилось отредактировать сообщение {partner_id} идет отправка сообщения:\n {e}')
                 await bot.send_message(
                     chat_id=partner_id,
                     text=cancel_text,
-                    reply_markup=continue_search_button(ContinueSearch.continue_search_edit),
+                    reply_markup=continue_search_button(ContinueSearch.continue_search),
                 )
 
             await call.message.edit_text(
-                text=f'🙈 Вы проигнорировали предложение.\n Нажмите на кнопку ниже, чтобы возобновить поиск.',
-                reply_markup=continue_search_button(ContinueSearch.continue_search_edit)
+                text=f'🙈 Вы проигнорировали предложение.\nНажмите на кнопку ниже, чтобы возобновить поиск.',
+                reply_markup=continue_search_button(ContinueSearch.continue_search)
                 )
 
         else:

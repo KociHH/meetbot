@@ -29,10 +29,6 @@ keys = {
    redis_room: __redis_room__
 }
 
-# rooms = {chat_id: {users: {user_id: {status_online: str, activity: bool, connected: datetime}}, created: datetime}}
-# random_waiting = {num_meet: {users: {user_id: {ready: bool = False}}}, created: datetime}
-# random_users = {user_id: {skip_users: [int], tolk_users: [int],"added_time": время_добавления, "message_id": id_сообщения_или_null, data_activity: datetime}}
-
 def cheking_keys():
     for key, rb in keys.items():
         if not redis_base.exists(key):
