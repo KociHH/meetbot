@@ -8,8 +8,9 @@ logger = logging.getLogger(__name__)
 
 redis_base = Redis()
 
-redis_users = 'searching_party'
+redis_users = 'searching_many'
 redis_room = 'redis_room'
+queue_for_chat = 'queue_for_chat'
 
 redis_random = 'searching_patners'
 redis_random_waiting = 'waiting_random'
@@ -18,22 +19,24 @@ redis_random_waiting = 'waiting_random'
 __redis_random_waiting__ = RedisBase(key=redis_random_waiting, data={}, redis=redis_base)
 __redis_random__ = RedisBase(key=redis_random, data={}, redis=redis_base)
 
-# rooms party
+# rooms many
 __redis_users__ = RedisBase(key=redis_users, data={}, redis=redis_base)
 __redis_room__ = RedisBase(key=redis_room, data={}, redis=redis_base)
+__queue_for_chat__ = RedisBase(key=queue_for_chat, data=[], redis=redis_base)
 
 keys = {
    redis_random_waiting: __redis_random_waiting__, 
    redis_random: __redis_random__,
    redis_users: __redis_users__,
-   redis_room: __redis_room__
+   redis_room: __redis_room__,
+   queue_for_chat: __queue_for_chat__
 }
 
 def cheking_keys():
     for key, rb in keys.items():
         if not redis_base.exists(key):
             data = {}
-            if key == redis_random:
+            if key == redis_random or redis_users:
                 data = {
                     12345678: {
                         "exception": [],
@@ -63,6 +66,7 @@ def cheking_keys():
                         'created': None
                     }
                 }
+
             rb.cached(data=data, key=key, ex=1200)
             logger.info(f'Создан {key} ключ в redis c датой: {data}')
             logger.info(f'Получненные данные {key}: {type(rb.get_cached())}')

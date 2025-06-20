@@ -6,14 +6,24 @@ from aiogram.enums import ParseMode
 from aiogram import Bot
 from aiogram.types import Message
 from kos_Htools import BaseDAO
-from config import BOT_TOKEN, BOT_ID
+from config import BOT_TOKEN, BOT_ID, BOT_USERNAME
 from aiogram.client.default import DefaultBotProperties
-from data.redis_instance import redis_random, redis_random_waiting, __redis_random__, __redis_random_waiting__
-from data.sqlchem import User
-from utils.other import error_logger
+from data.redis_instance import(
+    redis_random,
+    redis_random_waiting, 
+    __redis_random__, 
+    __redis_random_waiting__,
+    __redis_room__,
+    redis_room,
+    __redis_users__,
+    __queue_for_chat__
+    )
+from data.sqlchem import PrivateChats, User
+from utils.other import error_logger, about_groups
 from kos_Htools.telethon_core import multi
-from telethon.tl.functions.messages import AddChatUserRequest
-from telethon.tl.functions.channels import EditAdminRequest
+from telethon.errors import ChatAdminRequiredError, FloodWaitError, UserIdInvalidError, RPCError, UsernameNotModifiedError
+from telethon.tl.functions.messages import AddChatUserRequest, CreateChatRequest, MigrateChatRequest, ExportChatInviteRequest
+from telethon.tl.functions.channels import EditAdminRequest, InviteToChannelRequest, UpdateUsernameRequest, CreateChannelRequest
 from telethon.tl.types import ChatAdminRights
 from utils.time import time_for_redis
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -82,20 +92,6 @@ def random_search(users_data: list[str], data: dict) -> tuple[int, int] | None:
     logger.info(f'Нет подходящих юзеров для пар, в поиске: {size}')
     return None
 
-def count_meetings() -> int:
-    data = __redis_random_waiting__.get_cached(redis_random_waiting)
-    if not data:
-        return 1
-    
-    meetings = sorted(int(meet) for meet in data.keys())
-    dynamic_count = 1
-
-    for meet in meetings:
-        if meet == dynamic_count:
-            dynamic_count += 1
-        else:
-            break
-    return dynamic_count
 
 class RandomMeet:
     def __init__(self, user_id: str | int) -> None:
@@ -150,29 +146,6 @@ class RandomMeet:
         else:
             logger.warning(f'Такого {self.user_id} нет в {redis_random}')
             return None
-
-    @staticmethod
-    def meeting_account(data: dict | None = None) -> int:
-        if not data:
-            data = __redis_random_waiting__.get_cached()
-
-        try:
-            current_room_numbers = sorted(int(k) for k in data.keys() if str(k).isdigit())
-        except ValueError:
-            logger.error("Нецелые ключи найдены в данных random_waiting. Используется 1 по умолчанию")
-            return 1
-
-        if not current_room_numbers:
-            return 1
-
-        expected_room_number = 1
-        for room_num in current_room_numbers:
-            if room_num == expected_room_number:
-                expected_room_number += 1
-            elif room_num > expected_room_number:
-                return expected_room_number
-            
-        return expected_room_number
 
     def getitem_to_random_waiting(
             self,
@@ -229,111 +202,139 @@ class RandomMeet:
         return data
 
 
-async def find_func(message: Message, user_id: int, chat_id: int | None) -> bool | None:
-    from data.celery.tasks import add_user_to_search, remove_user_from_search, create_private_chat
-    try:
-        if not add_user_to_search.delay(message.message_id, user_id, redis_random).get():
-            await message.answer(text='⏳ Вы уже в очереди. Пожалуйста, подождите...')
-            await asyncio.sleep(1)
-            return None
-
-        data = __redis_random__.get_cached(redis_random)
-        partner_id = None
-
-        if partner_id and chat_id:
-            chat = await message.bot.create_chat_invite_link(
-                chat_id=chat_id,
-                name=title_chat,
-                member_limit=2,
-            )
-            
-            if chat:
-                await message.bot.send_message(
-                    chat_id=user_id,
-                    text=f"🔗 Собеседник найден! Войдите в чат:\n {chat.invite_link}"
-                )
-                await message.bot.send_message(
-                    chat_id=partner_id,
-                    text=f"🔗 Собеседник найден! Войдите в чат:\n {chat.invite_link}"
-                )
-                
-                remove_user_from_search.delay(user_id)
-                remove_user_from_search.delay(partner_id)
-                
-                room_data = create_private_chat.delay([user_id, partner_id], chat_id).get()
-                if room_data:
-                    logger.info(f'[Created]:\n {room_data}')
-                    return None
-                else:
-                    await message.answer(error_logger(True))
-                    logger.error(f'[Ошибка] при получении Json чата {chat_id}')
-                    return None
-                    
-            else:
-                logger.error(f'Чат не создался с ID: {chat_id}')
-                return None
-        return False
-                    
-    except Exception as e:
-        logger.error(error_logger(False, 'find_func', e)) 
-        return None
-
-
-async def create_private_group() -> Any:
-    try:
-        client = await multi()
-        await multi.get_or_switch_client(switch=True)
-
-        group = await client.create_supergroup(
-            title=title_chat,
-            about="Только по приглашению",
-            for_channel=False
-        )
-        logger.info(f'Группа создана с ID: {group.id}')
-
-        await client.invoke(AddChatUserRequest(
-            chat_id=group.id,
-            user_id=BOT_ID,
-        ))
-        
-        admin_rights = ChatAdminRights(
-            post_messages=True,
-            edit_messages=True,
-            delete_messages=True,
-            ban_users=True,
-            invite_users=True,
-            pin_messages=True,
-            add_admins=True,
-            anonymous=True,
-            manage_call=True,
-            other=True,
-            manage_topics=True,
-            change_info=True,
-            create_invite=True,
-            delete_chat=True,
-            manage_chat=True,
-            manage_video_chats=True,
-            can_manage_voice_chats=True,
-            can_manage_chat=True,
-            can_manage_channel=True
-        )
-        
-        admin_add = await client.invoke(EditAdminRequest(
-            channel=group.id,
-            user_id=BOT_ID,
-            admin_rights=admin_rights,
-            rank="caretaker"
-        ))
-        
-        logger.info(f"Бот-администратор добавлен в группу {group.id} с правами администратора")   
-        if group and admin_add:
-            return group
+class RandomGroupMeet:
+    def __init__(self, add_users: list[int] | None, user: str | int | None) -> None:
+        self.add_users = add_users
+        if isinstance(user, int):
+            self.user = user
+        elif isinstance(user, str) and user.isdigit():
+            self.user = int(user)
         else:
-            logger.error('[Ошибка] функция create_private_group не вернула группу')
-            return None
-        
-    except Exception as e:
-        logger.error(error_logger(False, 'create_private_group', e))
-        return None
+            self.user = None
+
+    async def create_private_group(self, group_title: str):
+        try:
+            await multi()
+            client = await multi.get_or_switch_client(switch=True)
+            bot = await client.get_entity(BOT_USERNAME)
+            result = await client(CreateChannelRequest(
+                title=group_title,
+                about=about_groups,
+                megagroup=True
+            ))
+            updates = result.updates
+            chat = None
+
+            for update in updates:
+                if hasattr(update, 'channel_id'):
+                    chat_id = update.channel_id
+                    chat = await client.get_entity(chat_id)
+                    break
+            if not chat:
+                raise Exception("Не удалось получить chat_id созданной супергруппы")
+
+            logger.info(f"Успешно создан чат под id: {chat_id}")    
+            chat = await client.get_entity(chat_id)
+
+            try:
+                await client(UpdateUsernameRequest(
+                    channel=chat,
+                    username=''
+                ))
+            except UsernameNotModifiedError:
+                pass
+
+            await client(InviteToChannelRequest(
+                channel=chat,
+                users=[bot]
+            ))
+
+            admin_rights = ChatAdminRights(
+                add_admins=True,
+                invite_users=True,
+                change_info=True,
+                ban_users=True,
+                delete_messages=True,
+                pin_messages=True,
+                manage_call=True,
+                anonymous=False,
+            )
+
+            try:
+                await client(EditAdminRequest(
+                    channel=chat,
+                    user_id=bot,
+                    admin_rights=admin_rights,
+                    rank='admin'
+                ))
+            # log
+            except ChatAdminRequiredError:
+                logger.error("Ошибка: недостаточно прав для назначения администратора боту.")
+                raise
+            except FloodWaitError as e:
+                logger.error(f"Ошибка: превышен лимит запросов. Нужно подождать {e.seconds} секунд.")
+                raise
+            except UserIdInvalidError:
+                logger.error("Ошибка: неверный user_id для бота.")
+                raise
+            except RPCError as e:
+                logger.error(f"RPC ошибка: {e}")
+                raise
+
+            invite = await client(ExportChatInviteRequest(
+                peer=chat
+            ))
+            invite_link = invite.link
+            logger.info(f"Ссылка для приглашения: {invite_link}")
+            return chat_id, invite_link
+
+        except Exception as e:
+            logger.error(f"Ошибка при создании приватной группы: {e}")
+            raise
     
 
+async def order_count(
+        base: str | None = None, 
+        base_db: str | None = None,
+        data: dict | None = None, 
+        db_session: AsyncSession | None = None,
+        ) -> int | None:
+    
+    if base_db == "PrivateChats" and db_session and not data:
+        chatb = BaseDAO(PrivateChats, db_session)
+        all_chats_id: list = await chatb.get_all_column_values(PrivateChats.chat_id)
+        expected_room_number = len(all_chats_id) + 1
+
+    else:
+        if base:
+            if not data:
+                db = None
+                if base == redis_random_waiting:
+                    db = __redis_random_waiting__
+                elif base == redis_room:
+                    db = __redis_room__
+                else:
+                    logger.error(f'Нет {base} ключа в redis')
+                    return 0
+            data: dict = db.get_cached()
+        else:
+            logger.error(f'Не передан аргументь base в функции order_count: {base}')
+            return 0
+
+        try:
+            current_room_numbers = sorted(int(k) for k in data.keys() if str(k).isdigit())
+        except ValueError:
+            logger.error("Нецелые ключи найдены в данных random_waiting. Используется 1 по умолчанию")
+            return 1
+
+        if not current_room_numbers:
+            return 1
+
+        expected_room_number = 1
+        for room_num in current_room_numbers:
+            if room_num == expected_room_number:
+                expected_room_number += 1
+            elif room_num > expected_room_number:
+                return expected_room_number
+            
+    return expected_room_number

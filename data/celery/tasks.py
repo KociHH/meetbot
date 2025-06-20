@@ -7,13 +7,23 @@ from kos_Htools.sql.sql_alchemy.dao import BaseDAO
 from data.mongo.config import party_searchers, many_searchers
 from keyboards.callback_datas import ContinueSearch
 from .celery_app import celery_app
-from data.redis_instance import redis_users, redis_room, redis_random, redis_random_waiting, __redis_users__, __redis_room__, __redis_random__, __redis_random_waiting__
+from data.redis_instance import (
+    redis_users,
+    redis_room,
+    redis_random,
+    redis_random_waiting, 
+    __redis_users__, 
+    __redis_room__, 
+    __redis_random__, 
+    __redis_random_waiting__,
+    __queue_for_chat__,
+    )
 from data.sqlchem import User
 from aiogram.utils import markdown
 from keyboards.inline_buttons import go_tolk, continue_search_button
 from data.utils import CreatingJson
 from utils.other import _send_message_to_user
-from utils.celery_tools import details_fromDB, random_search, count_meetings, RandomMeet, create_private_group
+from utils.celery_tools import details_fromDB, random_search, RandomMeet, order_count, RandomGroupMeet
 import asyncio
 import random
 import logging
@@ -40,52 +50,54 @@ def add_user_to_search(message_id: int, user_id: int, base: str) -> bool:
     if base == redis_random:
         data: dict = __redis_random__.get_cached()
         user_id_str = str(user_id)
-        rm = RandomMeet(user_id_str)
-        if user_id_str in data.keys():
-            if rm.getitem_to_random_user('message_id', data=data) != message_id:
-                result = rm.getitem_to_random_user(
-                    update_many={
-                        'message_id': message_id,
-                        'data_activity': time_for_redis,
-                        'online_searching': True
-                        },
-                    data=data
-                    )
-            else:
-                result = rm.getitem_to_random_user(
-                    update_many={
-                        'data_activity': time_for_redis,
-                        'online_searching': True
-                        },
-                    data=data
-                    )
-            if result:
-                logger.info(f'Обновлен юзер {user_id} в random_users через getitem_to_random_user')
-                return None
-            else:
-                logger.error(f'не обновился юзер {user_id}')
-                return None
+    elif base == redis_users:
+        data: dict = __redis_users__.get_cached()
+        queue_data: list = __queue_for_chat__.get_cached()
+        queue_data.append(user_id)
+        __queue_for_chat__.cached(data=queue_data, ex=None)
         
-        CreatingJson().random_data_user(
-            users=[user_id],
-            value={
-                'message_id': message_id,
-                'online_searching': True
-              },
-            main_data=data
-            )
-        logger.info(f'Добавлен новый юзер {user_id} в random_users В поиск через random_data_user')
-        print("\n\n===========================================================================================================\n\n")
-        return None
+    else:
+        logger.error(f"Не правильно указан аргумент base, значение: {base}")
+        return
 
-    elif base == 'party':
-        data = __redis_users__.get_cached(redis_users)
-        if user_id in data:
-            return None
-        data.append(user_id)
-        __redis_users__.cached(data=data, ex=None)
-        print("\n\n===========================================================================================================\n\n")
-        return None
+    rm = RandomMeet(user_id_str)
+    if user_id_str in data.keys():
+        if rm.getitem_to_random_user('message_id', data=data) != message_id:
+            result = rm.getitem_to_random_user(
+                update_many={
+                    'message_id': message_id,
+                    'data_activity': time_for_redis,
+                    'online_searching': True
+                    },
+                data=data
+                )
+        else:
+            result = rm.getitem_to_random_user(
+                update_many={
+                    'data_activity': time_for_redis,
+                    'online_searching': True
+                    },
+                data=data
+                )
+        if result:
+            logger.info(f'Обновлен юзер {user_id} в random_users через getitem_to_random_user')
+            return
+        else:
+            logger.error(f'не обновился юзер {user_id}')
+            return
+        
+    CreatingJson().redis_data_user(
+        users=[user_id],
+        base=redis_random,
+        value={
+            'message_id': message_id,
+            'online_searching': True
+            },
+        main_data=data
+        )
+    logger.info(f'Добавлен новый юзер {user_id} в --{base}')
+    print("\n\n===========================================================================================================\n\n")
+    return
 
 # patners
 @celery_app.task
@@ -179,7 +191,8 @@ def monitor_search_users_party():
                                 )
                             return None
 
-                        meet_created = CreatingJson().random_waiting(users=users_meet, num_meet=RandomMeet.meeting_account())
+                        num_meet = await order_count(base=redis_random_waiting)
+                        meet_created = CreatingJson().random_waiting(users=users_meet, num_meet=num_meet)
                         if not meet_created:
                             logger.error(f'Не создалась комната для: {user1_id}/{user2_id}. Оба пользователя будут удалены из поиска.')
                             for uid in users_meet:
@@ -277,7 +290,7 @@ async def create_private_chat(users_party: list) -> dict | None:
     """Создание приватного чата"""
     bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
     async with bot.session:
-        chat = await create_private_group(users_party)
+        chat = await RandomGroupMeet(None, None).create_private_group(users_party)
         if not chat:
             logger.error('Не удалось создать чат через create_private_group')
             return None

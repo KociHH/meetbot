@@ -1,27 +1,31 @@
-from email import message
 import logging
-import stat
 from kos_Htools import BaseDAO
-from sqlalchemy import select
 from commands.state import Main_menu, Menu_chats, find_groups, Admin_menu, random_user, Back
 from sqlalchemy.ext.asyncio import AsyncSession
 from aiogram.utils import markdown
-from data.redis_instance import __redis_room__, __redis_users__, redis_random, redis_users, __redis_random__
+from data.redis_instance import (
+    __redis_room__,
+    __redis_users__,
+    redis_random,
+    redis_users,
+    __redis_random__,
+    __queue_for_chat__,
+    )
 from keyboards.lists_command import command_chats, main_command_list
 from aiogram import F, Bot, Router
 from aiogram.types import Message, ReplyKeyboardRemove, CallbackQuery
 from aiogram.filters import Command, StateFilter
 from aiogram.fsm.context import FSMContext
-from data.sqlchem import User
-from keyboards.button_names import chats_bt, main_commands_bt, search_again_bt
+from data.sqlchem import User, SearchUser
+from keyboards.button_names import chats_bt, main_commands_bt, search_again_bt, edit_count_users
 from keyboards.reply_button import chats, main_commands, back_bt
 
 from utils.dataclass import BasicUser
-from keyboards.inline_buttons import go_tolk
-from data.utils import CreatingJson
 from data.celery.tasks import message_text, remove_user_from_search, add_user_to_search, monitor_search_users_party
-from utils.celery_tools import bot, RandomMeet, create_private_group, find_func
-
+from utils.celery_tools import bot, RandomMeet
+from utils.time import DateMoscow, dateMSC
+# « »
+minimum_users = 4
 pseudonym = 'psdn.'
 anonim = 'Anonim'
 logger = logging.getLogger(__name__)
@@ -39,8 +43,10 @@ async def system_chats(message: Message, state: FSMContext):
     if text == chats_bt.one:
         await message.answer(
             text=
-            f'Сейчас в поиске {len(__redis_users__.get_cached())}'
-            f'Введите с каким кол-во участников хотите начать общение [мин от {markdown.hcode('3')}]'
+            f'Сейчас в поиске: {markdown.hbold(len(__redis_users__.get_cached()))}'
+            f'Введите с каким кол-во участников хотите начать общение:\n'
+            f'«мин. от {markdown.hcode(f'{minimum_users}')}»',
+            reply_markup=back_bt()
         )
         await state.set_state(find_groups.enter_users)
 
@@ -48,40 +54,85 @@ async def system_chats(message: Message, state: FSMContext):
         await message.answer(text=text_instructions, reply_markup=main_commands())
         await state.set_state(random_user.main)
 
-
-@router.message(
-    F.text.in_(main_command_list),
-    StateFilter(find_groups.main)
-    )
-async def reply_command(message: Message, state: FSMContext, db_session: AsyncSession):
-    user_id = message.from_user.id
+@router.message(StateFilter(find_groups.enter_users))
+async def management_searching(message: Message, state: FSMContext, db_session: AsyncSession):
+    search_number = None
     text = message.text
-    if text == main_commands_bt.find:
-        chat = await create_private_group()
-        chat_id = chat.id
-        ff = await find_func(message, user_id, chat_id)
-        if not ff:
-            logger.info(f'Ошибка при поиске собеседника: {user_id} или Поиск уже идет')
-            return
-            
-    elif text == main_commands_bt.stop:
-        data: list = __redis_users__.get_cached(redis_users)
-        if user_id in data and data:
-            data.remove(user_id)
-            __redis_users__.cashed(redis_users, data=data, ex=None)
-            await message.answer(text='🛑 Вы прекратили поиск')
-        else:
-            await message.answer(text='🚀 Вы еще не в поиске нажмите скорее /find')
-        
-    elif text == main_commands_bt.back:
-        from commands.basic_command import menu_chats
+    user = BasicUser.from_message(message)
+
+    if text == main_commands_bt.back:
+        from basic_command import menu_chats
         await menu_chats(message, state)
 
+    if text.isdigit():
+        # adding db
+        itext = int(text)
+        userb = BaseDAO(SearchUser, db_session)
+        if itext < minimum_users:
+            await message.answer(f' ❗️ Заданное число меньше {markdown.hbold("минимума")}, должно быть больше {minimum_users - 1}.\n Попробуйте снова:')
+            await state.set_state(find_groups.again)
 
-@router.message(
-    F.text.in_(main_command_list),
-    StateFilter(random_user.main, random_user.search_again)
-    )
+        user_obj = await userb.get_one(SearchUser.user_id == user.user_id)
+        if user_obj:
+            if user_obj.search_number != itext:
+                await userb.update(
+                    where=SearchUser.user_id == user.user_id,
+                    data={
+                        'search_number': itext,
+                    })
+                search_number = itext
+            else:
+                search_number = user_obj.search_number
+        else:
+            await userb.create(data={
+                'search_number': itext,
+                "user_id": user.user_id,
+            })
+            search_number = itext
+
+        await message.answer(
+            text=
+            f"Заданное число участников: {markdown.hbold(search_number)}\n"
+            f"{text_instructions}",
+            reply_markup=main_commands(buttons=[edit_count_users])
+            )
+        await state.set_state(find_groups.start_searching)
+
+    else:
+        await message.answer(f" ❗️ Введите пожалуйста {markdown.hbold('число')}.\n Попробуйте снова:")
+        await state.set_state(find_groups.again)
+
+@router.message(StateFilter(find_groups.again))
+async def management_searching_again(message: Message, state: FSMContext):
+    try:
+        await management_searching(message, state)
+        await state.set_state(find_groups.enter_users)
+    except Exception as e:
+        logger.error(f"Ошибка в management_searching_again: {e}")
+        await message.answer("Произошла ошибка при повторном вводе. Попробуйте позже.")
+        await state.set_state(find_groups.enter_users)
+
+@router.message(F.text.in_(main_command_list), StateFilter(find_groups.start_searching))
+async def reply_command(message: Message, state: FSMContext, db_session: AsyncSession):
+    user = BasicUser.from_message(message)
+    text = message.text
+
+    if text == main_commands_bt.find:
+        add_user_to_search.delay()
+
+    elif text == main_commands_bt.stop:
+        pass
+
+    elif text == main_commands_bt.back:
+        from basic_command import menu_chats
+        await menu_chats(message, state)
+
+    elif text == edit_count_users:
+        await system_chats(message, state)
+        await state.set_state(Menu_chats.system_chats)
+
+
+@router.message(F.text.in_(main_command_list), StateFilter(random_user.main, random_user.search_again))
 async def send_random_user(message: Message, state: FSMContext, db_session: AsyncSession):
     limit_message = 5
     user = BasicUser.from_message(message)
@@ -119,7 +170,6 @@ async def send_random_user(message: Message, state: FSMContext, db_session: Asyn
             monitor_search_users_party.delay()
 
         if text == main_commands_bt.stop:
-            rm = RandomMeet(user.user_id)
             if rm.getitem_to_random_user(item='online_searching'):
                 online_searching = rm.getitem_to_random_user(item='online_searching', change_to=False, _change_provided=True)
 
@@ -159,7 +209,7 @@ async def saved_name_user(message: Message, state: FSMContext, db_session: Async
         await message.answer(f'Я вижу что вы опять ввели невидимый никнейм, прошу повторить попытку снова 🔄')
         await state.set_state(random_user.again_name)
 
-    save = await userb.update(User.user_id == user.user_id, {'pseudonym': text.join(f" {pseudonym}")})
+    save = await userb.update(User.user_id == user.user_id, {'pseudonym': f"{pseudonym} {text}"})
     if save:
         await state.set_state(random_user.main)
         await message.answer(

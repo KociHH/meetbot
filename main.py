@@ -11,6 +11,7 @@ from data.sqlchem import create_tables
 from utils.other import bot, dp
 from data.redis_instance import cheking_keys
 from utils.other import ErrorPrefixFilter
+from kos_Htools.telethon_core import multi
 
 def setup_logging():
     logging.basicConfig(
@@ -27,7 +28,7 @@ logger = logging.getLogger(__name__)
 webhook = WEB_HOOK_URL
 if '/webhook' not in WEB_HOOK_URL:
     webhook = WEB_HOOK_URL + '/webhook'
-  
+
 print(webhook)
 
 @asynccontextmanager
@@ -38,7 +39,7 @@ async def lifespan(app: FastAPI):
         await bot.set_webhook(webhook)
         await create_tables()
         cheking_keys()
-        
+
         dp.update.middleware(WareBase(session_engine))
         dp.message.middleware(checkerChannelWare(CHANNEL_ID))
         
@@ -65,18 +66,18 @@ async def bot_setwebhook(request: Request):
         logger.error(f'webhook ошибка: {e}')
         return {'status': 'error'}
 
-def def_start(token: str | None = None):
-    if token == 'bot':
-        print("Starting polling...")
-        try:
-            asyncio.run(dp.start_polling(bot))
-        except Exception as e:
-            print(f"An error occurred during polling: {e}")
-            import traceback
-            traceback.print_exc()
-        print("Polling finished.")
-    else:
-        uvicorn.run(app, host=WEB_HOOK_HOST, port=int(WEB_HOOK_PORT))
+async def def_start(token: str | None = None):
+    try:
+        if token == 'bot':
+            await bot.delete_webhook()
+            await dp.start_polling(bot)
+        else:
+            config = uvicorn.Config(app, host=WEB_HOOK_HOST, port=int(WEB_HOOK_PORT))
+            server = uvicorn.Server(config)
+            await server.serve()
+
+    except KeyboardInterrupt as e:
+        logger.info("off")
 
 if __name__ == "__main__":
-    def_start()
+    asyncio.run(def_start())

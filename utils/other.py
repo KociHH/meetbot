@@ -9,7 +9,7 @@ from keyboards.button_names import chats_bt
 from keyboards.reply_button import chats
 from aiogram.client.default import DefaultBotProperties
 from aiogram import Bot, Dispatcher
-from config import BOT_TOKEN
+from config import BOT_TOKEN, BOT_USERNAME
 from aiogram.enums import ParseMode
 from .words_or_other import INVISIBLE_CHARS, kats
 
@@ -17,6 +17,13 @@ logger = logging.getLogger(__name__)
 
 bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher()
+
+samples_log = '- - - - - - - - - - - - - - - - - - - - - - - - - - - - -'
+group_title = "Комнатка"
+about_groups = f"""
+🫨 Группа специально создана для общения и нахождения новых знакомств.\n
+Бот: @{BOT_USERNAME}
+"""
 
 hello_text = markdown.text(
     f'Привет\n'
@@ -74,3 +81,4 @@ async def _send_message_to_user(bot_thread: Bot, target_user_id: int, message_te
     except Exception as e:
         logger.error(f"Не удалось отправить сообщение пользователю {target_user_id}: {e}")
         return None
+    

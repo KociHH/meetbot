@@ -13,6 +13,7 @@ def get_env_var(key: str, default: Any = None) -> Any:
         logger.warning(f"Переменная окружения {key} не найдена!")
     return value
 
+BOSS_ID = int(get_env_var('BOSS_ID'))
 BOT_TOKEN = get_env_var('BOT_TOKEN')
 API_ID = get_env_var('TELEGRAM_API_ID')
 API_HASH = get_env_var('TELEGRAM_API_HASH')
