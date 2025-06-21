@@ -5,7 +5,7 @@ from typing import Any
 from aiogram.enums import ParseMode
 from aiogram import Bot
 from aiogram.types import Message
-from kos_Htools import BaseDAO
+from kos_Htools import BaseDAO, RedisBase
 from config import BOT_TOKEN, BOT_ID, BOT_USERNAME
 from aiogram.client.default import DefaultBotProperties
 from data.redis_instance import(
@@ -16,7 +16,8 @@ from data.redis_instance import(
     __redis_room__,
     redis_room,
     __redis_users__,
-    __queue_for_chat__
+    __queue_for_chat__,
+    redis_users
     )
 from data.sqlchem import PrivateChats, User
 from utils.other import error_logger, about_groups
@@ -51,7 +52,6 @@ async def details_fromDB(db_session: AsyncSession, users: list[int], name_or_pse
     except Exception as e:
         logger.error(f'В функции details_fromDB: {e}')
     return data
-
 
 def random_search(users_data: list[str], data: dict) -> tuple[int, int] | None:
     size = len(users_data)
@@ -92,9 +92,13 @@ def random_search(users_data: list[str], data: dict) -> tuple[int, int] | None:
     logger.info(f'Нет подходящих юзеров для пар, в поиске: {size}')
     return None
 
-
-class RandomMeet:
-    def __init__(self, user_id: str | int) -> None:
+class PackMeet:
+    def __init__(
+            self, 
+            user_id: int | str, 
+            users: list[int | str] | None,
+            base: str,
+            ) -> None:
         if isinstance(user_id, int):
             self.user_id = str(user_id)
         elif isinstance(user_id, str) and user_id.isdigit():
@@ -102,8 +106,30 @@ class RandomMeet:
         else:
             logger.error(f'Нечисловое user_id в методе RandomMeet: {user_id}')
             self.user_id = None
+        self.users = users
+        self.base = base
 
-    def getitem_to_random_user(
+    def which_db_users(self) -> RedisBase | None:
+        db = None
+        if self.base == redis_random:
+            db= __redis_random__
+        elif self.base == redis_users:
+            db = __redis_users__
+        else:
+            logger.warning(f"Нет redis базы под названием: {self.base}")
+            return
+        return db
+    
+    def delete_general_user(self):
+        db = self.which_db_users()
+        if db:
+            data = db.get_cached()
+            data.pop(self.user_id, None)
+            db.cached(data=data, ex=None)
+        else:
+            logger.error(f"Не вернулось значение: {db}")
+
+    def getitem_to_general_user(
             self,
             item: str = None,
             change_to: str | int | None = None,
@@ -112,16 +138,19 @@ class RandomMeet:
             data: dict | None = None
         ):
         if not data:
-            data: dict = __redis_random__.get_cached()
-        if isinstance(self.user_id, int):
-            self.user_id = str(self.user_id)
-        
+            db = self.which_db_users()
+            if db:
+                data: dict = db.get_cached()
+            else:
+                logger.error(f'Не вернулсось значение: {db}')
+                return
+
         if update_many:
             if self.user_id in data and isinstance(data.get(self.user_id), dict):
                 user_data = data[self.user_id]
                 for itm, val in update_many.items():
                     user_data[itm] = val
-                __redis_random__.cached(data=data, ex=None)
+                db.cached(data=data, ex=None)
                 return data
             else:
                 logger.error(f'Пользовательские данные не найдены или имеют неверный формат для {self.user_id} при попытке группового обновления.')
@@ -132,7 +161,7 @@ class RandomMeet:
             if _change_provided:
                 if self.user_id in data and isinstance(data.get(self.user_id), dict):
                      data[self.user_id][item] = change_to
-                     __redis_random__.cached(data=data, ex=None)
+                     db.cached(data=data, ex=None)
                 else:
                      logger.error(f'Пользовательские данные не найдены или имеют неверный формат для {self.user_id} при попытке обновления {item}')
                 return data.get(self.user_id, {}).get(item, None)
@@ -146,6 +175,11 @@ class RandomMeet:
         else:
             logger.warning(f'Такого {self.user_id} нет в {redis_random}')
             return None
+
+
+class RandomMeet(PackMeet):
+    def __init__(self, user_id, users = None, base = redis_random) -> None:
+        super().__init__(user_id, users, base)
 
     def getitem_to_random_waiting(
             self,
@@ -161,7 +195,6 @@ class RandomMeet:
 
         for room_id, room_info in data.items():
             users: dict = room_info.get('users', {})
-            #  "2": {"users": {"7593814197": {"ready": false, "message_id": null}, "5537454918": {"ready": false, "message_id": null}}, "created": "2025-06-08T00:42:00+03:00"}"
             user_id_str = str(self.user_id)
             if user_id_str in users.keys():
                 if return_full_info:
@@ -184,11 +217,6 @@ class RandomMeet:
         __redis_random_waiting__.cached(data=data, ex=None)
         return data
 
-    def delete_random_user(self):
-        data = __redis_random__.get_cached()
-        data.pop(str(self.user_id), None)
-        __redis_random__.cached(data=data, ex=None)
-
     def reset_rdata(self, items: list[str], add: dict = None):
         data: dict = __redis_random__.get_cached()
         for ite in items:
@@ -202,17 +230,12 @@ class RandomMeet:
         return data
 
 
-class RandomGroupMeet:
-    def __init__(self, add_users: list[int] | None, user: str | int | None) -> None:
-        self.add_users = add_users
-        if isinstance(user, int):
-            self.user = user
-        elif isinstance(user, str) and user.isdigit():
-            self.user = int(user)
-        else:
-            self.user = None
+class RandomGroupMeet(PackMeet):
+    def __init__(self, user_id, users = None, base=redis_users) -> None:
+        super().__init__(user_id, users, base)
 
-    async def create_private_group(self, group_title: str):
+    @staticmethod
+    async def create_private_group(group_title: str):
         try:
             await multi()
             client = await multi.get_or_switch_client(switch=True)
@@ -338,3 +361,4 @@ async def order_count(
                 return expected_room_number
             
     return expected_room_number
+

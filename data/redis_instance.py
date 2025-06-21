@@ -1,4 +1,4 @@
-from kos_Htools.redis_core.redisetup import RedisBase
+from kos_Htools.redis_core.redisetup import RedisShortened
 from redis import Redis
 import logging
 
@@ -16,13 +16,15 @@ redis_random = 'searching_patners'
 redis_random_waiting = 'waiting_random'
 
 # random patners
-__redis_random_waiting__ = RedisBase(key=redis_random_waiting, data={}, redis=redis_base)
-__redis_random__ = RedisBase(key=redis_random, data={}, redis=redis_base)
+__redis_random_waiting__ = RedisShortened(key=redis_random_waiting, data={}, redis_client=redis_base)
+__redis_random__ = RedisShortened(key=redis_random, data={}, redis_client=redis_base)
 
 # rooms many
-__redis_users__ = RedisBase(key=redis_users, data={}, redis=redis_base)
-__redis_room__ = RedisBase(key=redis_room, data={}, redis=redis_base)
-__queue_for_chat__ = RedisBase(key=queue_for_chat, data=[], redis=redis_base)
+__redis_users__ = RedisShortened(key=redis_users, data={}, redis_client=redis_base)
+__redis_room__ = RedisShortened(key=redis_room, data={}, redis_client=redis_base)
+
+
+__queue_for_chat__ = RedisShortened(key=queue_for_chat, data=[], redis_client=redis_base)
 
 keys = {
    redis_random_waiting: __redis_random_waiting__, 
