@@ -37,5 +37,9 @@ beat_schedule = {
     'moving-inactive-users-to-mongo': {
         'task': path_tasks + 'moving_inactive_users_to_mongo',
         'schedule': 2100.0, # 35min
+    },
+    'check-data-queue': {
+        'task': path_tasks + 'check_data_queue',
+        'schedule': 15.0,
     }
 }

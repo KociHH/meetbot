@@ -5,8 +5,13 @@ import venv
 from winreg import REG_NO_LAZY_FLUSH
 from kos_Htools.sql.sql_alchemy.dao import BaseDAO
 from data.mongo.config import party_searchers, many_searchers
+from keyboards.button_names import main_commands_bt
 from keyboards.callback_datas import ContinueSearch
+from keyboards.reply_button import choice_bt
 from .celery_app import celery_app
+from aiogram.fsm.storage.base import StorageKey
+from commands.state import Main_menu, Menu_chats, find_groups, Admin_menu, random_user, Back
+from aiogram.fsm.context import FSMContext
 from data.redis_instance import (
     redis_users,
     redis_room,
@@ -17,13 +22,14 @@ from data.redis_instance import (
     __redis_random__, 
     __redis_random_waiting__,
     __queue_for_chat__,
+    queue_for_chat
     )
 from data.sqlchem import User
 from aiogram.utils import markdown
 from keyboards.inline_buttons import go_tolk, continue_search_button
 from data.utils import CreatingJson
 from utils.other import _send_message_to_user
-from utils.celery_tools import details_fromDB, random_search, RandomMeet, order_count, RandomGroupMeet
+from utils.celery_tools import details_fromDB, random_search, RandomMeet, PackMeet, order_count, RandomGroupMeet
 import asyncio
 import random
 import logging
@@ -43,40 +49,61 @@ message_text = 'Идет поиск'
 logger = logging.getLogger(__name__)
 
 @celery_app.task
-def add_user_to_search(message_id: int, user_id: int, base: str) -> bool:
+def add_user_to_search(message_id: int, user_id: int, base: str) -> bool | None:
     """Добавление пользователя в поиск"""
     print("\n\n=============================================== SEARCH INFO ===============================================\n\n")
+    rm = None
+
+    # basic для поиска
+    update_message = {
+        'message_id': message_id,
+        'data_activity': time_for_redis,
+        'online_searching': True
+    }
+    update_activity = {
+        'data_activity': time_for_redis,
+        'online_searching': True
+    }
+    adding_to_search = {
+        'message_id': message_id,
+        'online_searching': True
+    }
 
     if base == redis_random:
         data: dict = __redis_random__.get_cached()
         user_id_str = str(user_id)
+        rm = RandomMeet(user_id_str)
+
     elif base == redis_users:
         data: dict = __redis_users__.get_cached()
-        queue_data: list = __queue_for_chat__.get_cached()
-        queue_data.append(user_id)
-        __queue_for_chat__.cached(data=queue_data, ex=None)
-        
+        queue_data: list = __queue_for_chat__.lrange(0, -1)
+        append = append_remove_for_rqueue.delay(add_users=[user_id], data=queue_data)
+        if user_id_str not in append:
+            logger.error(
+                f"{user_id} Не добавился в очередь {queue_for_chat} через append_remove_for_rqueue,"
+                "будет удален из поиска."
+                )
+            remove_user_from_search().delay(user_id_str, redis_users)
+            return
+
+        logger.info(f'{user_id} успешно был добавлен в очередь {queue_for_chat}')
+        rm = RandomGroupMeet(user_id_str)
+        for js in [update_message, update_activity, adding_to_search]:
+            js['in_queue_list'] = True
+
     else:
         logger.error(f"Не правильно указан аргумент base, значение: {base}")
         return
-
-    rm = RandomMeet(user_id_str)
+    
     if user_id_str in data.keys():
-        if rm.getitem_to_random_user('message_id', data=data) != message_id:
-            result = rm.getitem_to_random_user(
-                update_many={
-                    'message_id': message_id,
-                    'data_activity': time_for_redis,
-                    'online_searching': True
-                    },
+        if rm.getitem_to_general_user('message_id', data=data) != message_id:
+            result = rm.getitem_to_general_user(
+                update_many=update_message,
                 data=data
                 )
         else:
-            result = rm.getitem_to_random_user(
-                update_many={
-                    'data_activity': time_for_redis,
-                    'online_searching': True
-                    },
+            result = rm.getitem_to_general_user(
+                update_many=update_activity,
                 data=data
                 )
         if result:
@@ -85,26 +112,31 @@ def add_user_to_search(message_id: int, user_id: int, base: str) -> bool:
         else:
             logger.error(f'не обновился юзер {user_id}')
             return
-        
+    
     CreatingJson().redis_data_user(
         users=[user_id],
-        base=redis_random,
-        value={
-            'message_id': message_id,
-            'online_searching': True
-            },
+        base=base,
+        value=adding_to_search,
         main_data=data
         )
     logger.info(f'Добавлен новый юзер {user_id} в --{base}')
     print("\n\n===========================================================================================================\n\n")
-    return
+    return True
 
 # patners
 @celery_app.task
-def remove_user_from_search(user_id: int) -> bool:
+def remove_user_from_search(user_id: int, base: str = redis_random) -> bool:
     """Полное удаление пользователя из поиска"""
-    rm = RandomMeet(user_id)
-    rm.delete_random_user()
+    if base == redis_random:
+        rm = RandomMeet(user_id)
+    elif base == redis_users:
+        rm = RandomGroupMeet(user_id)
+    else:
+        logger.warning(f'В аргументе base не найден такой ключ: {base}')
+        return False
+    
+    rm.delete_general_user()
+    return True
 
 @celery_app.task
 def monitor_search_users_party():
@@ -113,7 +145,7 @@ def monitor_search_users_party():
         print("\n\n=============================================== PARTNERS INFO ===============================================\n\n")
         data: dict = __redis_random__.get_cached()
 
-        users_data = [us for us in data.keys() if us.isdigit() and RandomMeet(us).getitem_to_random_user(item='online_searching', data=data)]
+        users_data = [us for us in data.keys() if us.isdigit() and RandomMeet(us).getitem_to_general_user(item='online_searching', data=data)]
         pair = random_search(users_data, data)
 
         if pair:
@@ -202,11 +234,11 @@ def monitor_search_users_party():
 
                         for uid, ms in zip(users_meet, [user1_msg_obj, user2_msg_obj]):
                             rm = RandomMeet(uid)
-                            message_count = int(rm.getitem_to_random_user(item='message_count'))
+                            message_count = int(rm.getitem_to_general_user(item='message_count'))
                             new_message_count = message_count + 1 if isinstance(message_count, int) else 2
 
                             rm.getitem_to_random_waiting(field='message_id', value=ms.message_id, complete_update=True)
-                            rm.getitem_to_random_user(item='message_count', change_to=new_message_count, _change_provided=True)
+                            rm.getitem_to_general_user(item='message_count', change_to=new_message_count, _change_provided=True)
                         logger.info(f'Добавлены message_id и message_count для '
                                     f'{user1_id} ({user1_msg_obj.message_id}, {new_message_count}) и '
                                     f'{user2_id} ({user2_msg_obj.message_id}, {new_message_count})'
@@ -214,7 +246,7 @@ def monitor_search_users_party():
 
                         for uid_to_clean in users_meet:
                             rm = RandomMeet(uid_to_clean)
-                            deactivating_search = rm.getitem_to_random_user(
+                            deactivating_search = rm.getitem_to_general_user(
                                 update_many={
                                     'online_searching': False,
                                     'last_animation_text': None,
@@ -225,14 +257,14 @@ def monitor_search_users_party():
                             if not deactivating_search:
                                 logger.error(f'Не изменены данные {uid_to_clean} для деактивации поиска.')
 
-                            message_id_to_delete = rm.getitem_to_random_user(item='message_id')
+                            message_id_to_delete = rm.getitem_to_general_user(item='message_id')
                             if message_id_to_delete:
                                 try:
                                     await bot_thread.delete_message(
                                         chat_id=uid_to_clean,
                                         message_id=message_id_to_delete
                                     )
-                                    rm.getitem_to_random_user(item='message_id', change_to=None, _change_provided=True)
+                                    rm.getitem_to_general_user(item='message_id', change_to=None, _change_provided=True)
                                     logger.info(f"Успешно удалено сообщение анимации для пользователя {uid_to_clean}.")
                                 except Exception as e:
                                     logger.error(f"Не удалось удалить сообщение анимации для пользователя {uid_to_clean}: {e}")
@@ -281,22 +313,61 @@ def check_search_timeout(user_id: int, message_id: int):
                     logger.error(f'Не удалось остановить анимацию поиска для пользователя {user_id} по таймауту: {e}')
 
         asyncio.run(_stop_animation_timeout(user_id, message_id))
-        rm.getitem_to_random_user(item='online_searching', change_to=False, _change_provided=True)
+        rm.getitem_to_general_user(item='online_searching', change_to=False, _change_provided=True)
         logger.info(f'Бот остановил поиск для {user_id_str} из за не активности')
 
 # party
 @celery_app.task
+def append_remove_for_rqueue(
+    add_users: list[int | str] | None = None, 
+    remove_users: list[int | str] | None = None,
+    data: list | None = None,
+    remove: bool = False
+):
+    """Добавляет пользователей в очередь или удаляет их из очереди."""
+    if data is None:
+        data = __queue_for_chat__.lrange(0, -1)
+
+    changed = False
+
+    if remove and remove_users:
+        for rem in remove_users:
+            if rem is not None:
+                remst = str(rem)
+                if remst in data:
+                    __queue_for_chat__.lrem(0, remst)
+                    changed = True
+                else:
+                    logger.warning(f"Пользователь {remst} не найден в очереди для удаления.")
+    
+    if add_users:
+        for add in add_users:
+            if add is not None:
+                addst = str(add)
+                if addst not in data:
+                    __queue_for_chat__.rpush(addst)
+                    changed = True
+                else:
+                    logger.warning(f"Пользователь {addst} уже есть в очереди, не добавляем повторно.")
+
+    if not changed:
+        logger.warning('Не были переданы валидные аргументы для добавления или удаления пользователей в append_remove_for_rqueue')
+        return
+
+    return __queue_for_chat__.lrange(0, -1)
+
+@celery_app.task
 async def create_private_chat(users_party: list) -> dict | None:
     """Создание приватного чата"""
-    bot = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
-    async with bot.session:
-        chat = await RandomGroupMeet(None, None).create_private_group(users_party)
+    bot_thread = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    async with bot_thread.session:
+        chat, _ = await RandomGroupMeet.create_private_group(users_party)
         if not chat:
             logger.error('Не удалось создать чат через create_private_group')
             return None
         
         try:
-            invite_link = await bot.create_chat_invite_link(
+            invite_link = await bot_thread.create_chat_invite_link(
                 chat_id=chat.id,
                 name="Приватный чат",
                 member_limit=2
@@ -333,7 +404,7 @@ def animate_search():
                 except Exception as e:
                     logger.error(f'[Ошибка] Не удалось обновить сообщение анимации для пользователя {chat_id} (message_id: {message_id}): {e}')
                     rm = RandomMeet(chat_id)
-                    rm.delete_random_user()
+                    rm.delete_general_user()
 
             current_second = int(time.time())
             frame_index = current_second % len(animation_frames)
@@ -347,7 +418,7 @@ def animate_search():
                     logger.warning(f'Пропущен нечисловой ключ в данных Redis: {user_id_str}')
                     continue
 
-                online_searching = rm.getitem_to_random_user(item='online_searching', data=data)
+                online_searching = rm.getitem_to_general_user(item='online_searching', data=data)
                 if online_searching is False:
                     continue
 
@@ -382,7 +453,7 @@ def animate_search():
                 else:
                     logger.error(f'Не правильный тип user_info - {type(user_info)} для пользователя {user_id_str}')
                     rm = RandomMeet(user_id)
-                    rm.delete_random_user()
+                    rm.delete_general_user()
 
             if tasks:
                 await asyncio.gather(*tasks)
@@ -435,10 +506,10 @@ def check_inactivity_timeout():
 
             for user_id_str, user_info in data.items():
                 rm = RandomMeet(user_id_str)
-                online_searching = rm.getitem_to_random_user(item='online_searching', data=data)
+                online_searching = rm.getitem_to_general_user(item='online_searching', data=data)
 
                 if online_searching is False:
-                    logger.info(f'В данный момент {user_id_str} не в поиске (ласт активность: {rm.getitem_to_random_user(item='data_activity')})')
+                    logger.info(f'В данный момент {user_id_str} не в поиске (ласт активность: {rm.getitem_to_general_user(item='data_activity')})')
                     continue
 
                 if not user_id_str.isdigit():
@@ -474,7 +545,7 @@ def check_inactivity_timeout():
 
                     if message_obj:
                         rm = RandomMeet(user_id_str)
-                        rm.getitem_to_random_user(
+                        rm.getitem_to_general_user(
                             update_many={
                                 'continue_id': message_obj.message_id,
                                 'data_activity': time_for_redis
@@ -520,7 +591,7 @@ def moving_inactive_users_to_mongo() -> None:
 
         for user_id in uids_to_delete:
             rm = RandomMeet(user_id)
-            rm.delete_random_user()
+            rm.delete_general_user()
         
         if size >= 2:
             party_searchers.insert_many(user_sets)
@@ -538,4 +609,56 @@ def moving_inactive_users_to_mongo() -> None:
         print(end_log)
         return
     
+@celery_app.task
+async def check_data_queue():
+    print("\n\n=============================================== CHECK DATA QUEUE ===============================================\n\n")
+    end_log = print("\n\n================================================================================================================\n\n")
+    bot_thread = Bot(token=BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
+    queue = __queue_for_chat__.lrange(0, -1)
+    data: dict = __redis_users__.get_cached()
+    cdata = data.copy()
+    request_users = []
 
+    if not queue and not data:
+        logger.info(f'Нет данных для обработки, пропускаем.')
+        print(end_log)
+        return
+
+    if queue:
+        for uidst in queue:
+            if uidst in data.keys():
+                cdata.pop(uidst)
+                continue
+            else:
+                request_users.append(uidst) 
+    
+    if data:
+        for uidst in data.keys():
+            if uidst in queue:
+                cdata.pop(uidst)
+                continue
+            else:
+                request_users.append(uidst)
+
+    request_users = request_users + cdata.keys()
+    if request_users:
+        for uidst in request_users:
+            await _send_message_to_user(
+                bot_thread=bot_thread,
+                target_user_id=uidst,
+                message_text=
+                "❓ Произошла непредвиденная ошибка.\n"
+                "😬 Приносим извинения, пожалуйста войдите в поиск еще раз. Спасибо <3",
+                reply_markup=choice_bt(choise=[main_commands_bt.find])
+            )
+            key = StorageKey(bot_id=bot_thread.id, chat_id=uidst, user_id=uidst)
+            user_context = FSMContext(storage=bot_thread.dispatcher.storage, key=key)
+            await user_context.set_state(random_user.search_again)
+
+            rm = RandomGroupMeet(uidst)
+            rm.getitem_to_general_user(item='online_searching', change_to=True, _change_provided=True, data=data)
+            __queue_for_chat__.lrem(0, uidst)
+            logger.error(f'Юзер < {uidst} > был удален из поиска и стал неактивным с помощью таски check_data_queue')
+    
+    print(end_log)
+    return

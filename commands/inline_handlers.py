@@ -73,7 +73,7 @@ async def sucsess_talk(call: CallbackQuery, db_session: AsyncSession):
     print(room_id, result, users)
 
     if result:
-        message_count = int(rm.getitem_to_random_user(item='message_count'))
+        message_count = int(rm.getitem_to_general_user(item='message_count'))
         reset = rm.reset_rdata(items=['added_time', 'last_animation_text', 'continue_id'], add={'message_count': message_count - 1})
         if not reset:
             logger.error(f'Данные {user.user_id} не обнулились')
@@ -159,7 +159,7 @@ async def skip_talk(call: CallbackQuery):
         if result:
             partner_id = next(int(us) for us in users.keys() if int(us) != user.user_id)
             partner_msd = RandomMeet(partner_id).getitem_to_random_waiting(field='message_id', return_value=True,)
-            message_count = int(rm.getitem_to_random_user(item='message_count'))
+            message_count = int(rm.getitem_to_general_user(item='message_count'))
             reset = rm.reset_rdata(items=['added_time', 'last_animation_text', 'continue_id'], add={'message_count': message_count - 1})
             if not reset:
                 logger.error(f'Данные {user.user_id} не обнулились')

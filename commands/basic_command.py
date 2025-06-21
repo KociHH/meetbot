@@ -195,7 +195,7 @@ async def add_chat_API(message: Message, state: FSMContext, db_session: AsyncSes
                 success_count = 0
                 for i in range(itext):
                     await asyncio.sleep(2)
-                    chat_id, _ = await RandomGroupMeet(None, None).create_private_group(group_title=group_title)
+                    chat_id, _ = await RandomGroupMeet.create_private_group(group_title=group_title)
                     if chat_id:
                         success_count += 1
                         logger.info(
@@ -217,8 +217,8 @@ async def add_chat_API(message: Message, state: FSMContext, db_session: AsyncSes
         # log block
                 await message.answer(
                     text=
-                    f"{f'✅ Успешно добавленны чаты: «{markdown.hbold(success_count)}/{itext}»' if itext != 0 else \
-                    f'❌ Ни один чат не был добавлен. «{success_count}/{itext}»'}\n"
+                    f"{f'✅ Успешно добавленны и созданы чаты: {markdown.hbold(success_count)}/{itext}' if itext != 0 else \
+                    f'❌ Ни один чат не был добавлен. {success_count}/{itext}'}\n"
                     f"Продолжайте вводить, либо вренитесь в меню нажав на кнопку «{reply_back_bt.back}»",
                     reply_markup=back_bt()
                     )

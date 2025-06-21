@@ -11,6 +11,14 @@ def chats() -> ReplyKeyboardMarkup:
     builder.adjust(1, 1)
     return builder.as_markup(resize_keyboard=True)
 
+def choice_bt(choise: list[str]) -> ReplyKeyboardMarkup:
+    builder = ReplyKeyboardBuilder()
+    for bt in choise:
+        builder.button(bt)
+        
+    builder.adjust(1)
+    return builder.as_markup()
+
 def main_commands(buttons: list[str] | None = None) -> ReplyKeyboardMarkup:
     try:
         builder = ReplyKeyboardBuilder()

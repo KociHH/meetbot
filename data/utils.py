@@ -66,6 +66,7 @@ class CreatingJson:
 
             added_time = value.get('added_time', user_data.get('added_time', time.time()))
             data_activity = value.get('data_activity', user_data.get('data_activity', time_for_redis))
+            in_queue_list = value.get('in_queue_list', user_data.get('in_queue_list', False))
 
             # party
             if base == redis_random:
@@ -86,7 +87,10 @@ class CreatingJson:
             
             # many
             elif base == redis_users:
+                
                 main_data[user_id_str] = {
+                    # other
+                    "in_queue_list": in_queue_list,
                     # exceptions
                     "exception": exception,
                     # messages

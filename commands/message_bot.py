@@ -138,7 +138,7 @@ async def send_random_user(message: Message, state: FSMContext, db_session: Asyn
     user = BasicUser.from_message(message)
     text = message.text
     rm = RandomMeet(user.user_id)
-    rm.getitem_to_random_user(item='contine_id', change_to=None, _change_provided=True)
+    rm.getitem_to_general_user(item='contine_id', change_to=None, _change_provided=True)
     try:
         from utils.other import remove_invisible
         if not remove_invisible(user.full_name):
@@ -149,7 +149,7 @@ async def send_random_user(message: Message, state: FSMContext, db_session: Asyn
                 )
 
         if text == main_commands_bt.find:
-            message_count = rm.getitem_to_random_user(item='message_count')
+            message_count = rm.getitem_to_general_user(item='message_count')
 
             if not message_count:
                 message_count = 0
@@ -161,7 +161,7 @@ async def send_random_user(message: Message, state: FSMContext, db_session: Asyn
                     f'Дальнейший поиск был {markdown.hcode("остановлен")}, нажмите на (😒 скип) или (✅ общаться)\n'
                     f'Пожалуйста ответьте на каждое из сообщений, чтобы продолжить {markdown.hcode("поиск")}\n'
                 )
-                rm.getitem_to_random_user(item='online_searching', change_to=False, _change_provided=True)
+                rm.getitem_to_general_user(item='online_searching', change_to=False, _change_provided=True)
                 logger.info(f'Пользователь {user.user_id} остановил поиск')
                 return
             
@@ -170,8 +170,8 @@ async def send_random_user(message: Message, state: FSMContext, db_session: Asyn
             monitor_search_users_party.delay()
 
         if text == main_commands_bt.stop:
-            if rm.getitem_to_random_user(item='online_searching'):
-                online_searching = rm.getitem_to_random_user(item='online_searching', change_to=False, _change_provided=True)
+            if rm.getitem_to_general_user(item='online_searching'):
+                online_searching = rm.getitem_to_general_user(item='online_searching', change_to=False, _change_provided=True)
 
                 logger.info(f'{user.user_id} вышел из поиска по своему желанию -online_searching: {online_searching}')
                 await message.answer(
