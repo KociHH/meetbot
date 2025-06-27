@@ -1,0 +1,73 @@
+version: '3.8'
+
+services:
+  bot:
+    build: .
+    command: python main.py
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - redis
+      - mongo
+    networks:
+      - meetbot_network
+
+  db:
+    image: postgres:13
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    env_file:
+      - .env
+    networks:
+      - meetbot_network
+
+  redis:
+    image: redis:latest
+    ports:
+      - "6379:6379"
+    networks:
+      - meetbot_network
+
+  mongo:
+    image: mongo:latest
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - meetbot_network
+
+  celery_worker:
+    build: .
+    command: celery -A data.celery.celery_app worker -l info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+      - db
+      - mongo
+    networks:
+      - meetbot_network
+
+  celery_beat:
+    build: .
+    command: celery -A data.celery.celery_app beat -l info
+    volumes:
+      - .:/app
+    env_file:
+      - .env
+    depends_on:
+      - redis
+    networks:
+      - meetbot_network
+
+volumes:
+  postgres_data:
+  mongo_data:
+
+networks:
+  meetbot_network:
+    driver: bridge 
