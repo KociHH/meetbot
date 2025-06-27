@@ -12,3 +12,4 @@ test_*
 *_test.py
 *.log
 .pytest_cache/
+*.session
