@@ -12,3 +12,8 @@ test_*
 *_test.py
 *.log
 .pytest_cache/
+celerybeat-schedule
+celerybeat.pid
+celerybeat.log
+celerybeat.log.*
+*.session
